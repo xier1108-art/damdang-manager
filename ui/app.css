@@ -410,3 +410,10 @@ td .pill.tint{font-weight:500;border-radius:5px;padding:2px 8px;font-size:12.5px
 .cp:hover{color:var(--accent-ink);border-color:var(--accent)}
 .cp.done{color:var(--ok-ink);border-color:var(--ok-ink);display:inline-flex}
 #listView td.has-cp:hover .cp,.cp:focus-visible{display:inline-flex}
+
+/* 1.4.1 — 계약자 줄마다 비즈노 조회 버튼 */
+.bz-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:-8px}
+.bz-list .btn{max-width:100%;min-width:0}
+.bz-list .bz-role{font-size:11px;font-weight:700;padding:1px 6px;border-radius:5px;background:var(--seg);color:var(--ink2);flex:none}
+.bz-list .bz-nm{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.bz-list .muted{font-weight:500;font-size:12px;flex:none}

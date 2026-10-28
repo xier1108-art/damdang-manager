@@ -541,7 +541,7 @@ function renderDetail() {
       ${ch.length ? `<div class="sub-list">${ch.map((k) => `<button type="button" data-goto="${k.id}"><span>${esc(k.phase)} · <span class="pill st-${esc(k.status)}" style="padding:1px 7px">${esc(k.status)}</span> <span class="muted">${shortD(k.startDate)} → ${shortD(k.endDate)}</span></span><span>${fmt(k.amount)}</span></button>`).join('')}</div>` : ''}`;
   }
   const parentLink = parent ? `<button type="button" class="link-btn" data-goto="${parent.id}">↑ ${esc(parent.title)}</button>` : '';
-  const bizQ = (x.contractor.match(/\d{3}-\d{2}-\d{5}/) || [])[0];
+  const bizLinks = bizList(x.contractor);
 
   el.innerHTML = `
     <div class="d-head">
@@ -585,11 +585,8 @@ function renderDetail() {
         <div class="gc-state" id="gcState">${gcalDetailState(x)}</div>
       </div>
       <label class="fld">계약자<textarea data-k="contractor" rows="2" placeholder="업체명 대표 성명 (000-00-00000)">${esc(x.contractor)}</textarea></label>
-      <div class="grid2">
-        <label class="fld">연락처·담당<textarea data-k="contact" rows="2">${esc(x.contact)}</textarea></label>
-        <label class="fld">비즈노넷<textarea data-k="bizno" rows="2">${esc(x.bizno)}</textarea></label>
-      </div>
-      ${bizQ ? `<div><button type="button" class="btn sm" data-act="bizno" data-q="${bizQ}">${ICON.link}비즈노에서 ${bizQ} 조회</button></div>` : ''}
+      ${bizLinks.length ? `<div class="bz-list" aria-label="비즈노 조회">${bizLinks.map((b) => `<button type="button" class="btn sm" data-act="bizno" data-q="${b.no}" title="비즈노에서 ${esc(b.name)} (${b.no}) 조회">${ICON.link}${b.role ? `<span class="bz-role">${esc(b.role)}</span>` : ''}<span class="bz-nm">${esc(b.name)}</span><span class="muted">${b.no}</span></button>`).join('')}</div>` : ''}
+      <label class="fld">연락처·담당<textarea data-k="contact" rows="2">${esc(x.contact)}</textarea></label>
       ${sub}
       <label class="fld">특이사항<textarea data-k="note" rows="5">${esc(x.note)}</textarea></label>
       <div class="d-actions">
@@ -683,7 +680,8 @@ function onField(e, final) {
   } else {
     x[k] = v;
     if (k === 'bizno') delete x._biznoAuto;
-    if (k === 'contractor' && final && (!x.bizno || x._biznoAuto)) { x.bizno = deriveBizno(v); x._biznoAuto = true; }
+    // 비즈노넷 칸은 화면에서 뺐으므로 계약자를 고치면 항상 따라 맞춘다(노션 링크용)
+    if (k === 'contractor' && final) { x.bizno = deriveBizno(v); x._biznoAuto = true; }
   }
   touch(x);
   reindex();
@@ -857,6 +855,18 @@ async function loadCfg() { try { cfg = await (await fetch('api/settings')).json(
 // ---------- 문서로 추가 · 갱신 (Claude) ----------
 const FIELD_LABEL = { title: '요약명', school: '학교', category: '항목', phase: '차수', parentId: '상위계약', status: '상태', name: '계약명', no: '계약번호', contractor: '계약자', amount: '계약금액(원)', contractDate: '계약일', startDate: '착수일', endDate: '완수일', contact: '연락처·담당', note: '특이사항' };
 let aiFiles = [];
+// 계약자 줄마다 (역할) 업체명 · 사업자번호 — 대표·공동·분담 등 모두
+function bizList(c) {
+  const out = [];
+  for (const line of (c || '').split('\n').map((l) => l.trim()).filter(Boolean)) {
+    const no = (line.match(/\d{3}-\d{2}-\d{5}/) || [])[0];
+    if (!no) continue;
+    const role = (line.match(/^\(([가-힣]{2,4})\)/) || [])[1] || ''; // (주)·(유) 같은 법인 표기는 역할이 아님
+    const name = line.replace(/^\([가-힣]{2,4}\)\s*/, '').replace(/\s*\(\d{3}-\d{2}-\d{5}\)\s*$/, '').replace(/\s+대표\s+.*$/, '').replace(/\s*\d{3}-\d{2}-\d{5}.*$/, '').trim();
+    if (!out.some((b) => b.no === no)) out.push({ role, name: name || no, no });
+  }
+  return out;
+}
 function deriveBizno(c) {
   return (c || '').split('\n').map((l) => l.trim()).filter(Boolean)
     .map((l) => l.replace(/\s*\(\d{3}-\d{2}-\d{5}\)\s*$/, '').replace(/\s+대표\s+.*$/, '')).join('\n');
@@ -1229,7 +1239,7 @@ function bind() {
       if (act === 'aiUpdate' && x) openAIModal('update');
       if (act === 'sync') syncNow(false);
       if (act === 'notionSetup') openSettings('#secNotion');
-      if (act === 'bizno') fetch('api/open-url?u=' + encodeURIComponent('https://bizno.net/?query=' + a.dataset.q));
+      if (act === 'bizno') fetch('api/open-url?u=' + encodeURIComponent('https://bizno.net/article/' + a.dataset.q.replace(/-/g, '')));
       return;
     }
     const rf = t.closest('[data-rmfile]'); if (rf) { e.preventDefault(); aiFiles.splice(Number(rf.dataset.rmfile), 1); renderAIFiles(); return; }

@@ -478,3 +478,10 @@ td .pill.tint{font-weight:500;border-radius:5px;padding:2px 8px;font-size:12.5px
 .g-adv summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--ink2)}
 .g-adv[open]{display:flex;flex-direction:column;gap:10px}
 .g-adv[open] summary{margin-bottom:2px}
+
+/* 1.7.1 — 같이 볼 캘린더 체크박스가 입력칸 스타일(.fld input)을 받지 않도록 */
+.cal-pick{gap:8px 16px}
+.cal-pick .check{white-space:nowrap;gap:7px;line-height:1.3}
+.fld .cal-pick .check input[type=checkbox]{width:16px;height:16px;min-width:0;padding:0;margin:0;border:0;flex:none;box-shadow:none;accent-color:var(--accent)}
+.cal-pick .check .dot{width:9px;height:9px}
+.cal-pick .hint{flex-basis:100%}

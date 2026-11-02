@@ -469,3 +469,12 @@ td .pill.tint{font-weight:500;border-radius:5px;padding:2px 8px;font-size:12.5px
 :root[data-theme=dark] .cal-ev.cal-g .cal-k{color:rgba(255,255,255,.7)}
 .cal-pick{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
 .cal-pick .check{margin:0;font-weight:500;color:var(--ink2);font-size:13px}
+
+/* 1.7 — 구글 계정 로그인 */
+.g-acct{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.g-acct .btn svg{width:16px;height:16px}
+.ok-dot{width:9px;height:9px;border-radius:50%;background:var(--ok-ink);flex:none}
+.g-adv{border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.g-adv summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--ink2)}
+.g-adv[open]{display:flex;flex-direction:column;gap:10px}
+.g-adv[open] summary{margin-bottom:2px}

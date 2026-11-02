@@ -8,11 +8,11 @@
 - `settings.go` — 설정(키는 Windows DPAPI 암호화), 연결 테스트
 - `docs.go` — 계약 문서 보관(문서\학교\요약명 폴더)
 - `tray_windows.go` — 트레이 아이콘, 창을 닫으면 숨기기
-- `gcal.go` — 구글 캘린더 '업무'에 (착수)/(완수) 일정 등록 (사용자 계정의 Apps Script 웹 앱을 거침)
+- `gcal.go` — 구글 로그인(OAuth·PKCE)과 구글 캘린더 API: (착수)/(완수) 일정 등록, 다른 일정 불러오기
 - `export.go` — 엑셀 내보내기
 - `platform_windows.go` / `platform_other.go` — 창(WebView2)·OS 기능
 - `ui/` — 화면(index.html, app.css, app.js, 글꼴)
-- `seed.json` — 최초 실행 시 넣는 노션 데이터(118건)
+- `seed.json` — 최초 실행 시 넣는 기본 목록(학교·항목, 계약은 비어 있음)
 - `winres/` — 아이콘·버전 정보, `rsrc_windows_amd64.syso` — 빌드에 쓰는 리소스
 
 ## 빌드 (Windows PC)
@@ -34,4 +34,5 @@ GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -H windowsgui" -o �
 
 ## 참고
 - 데이터 파일(`담당사업관리_data.json`)과 설정 파일은 exe와 같은 폴더에 생깁니다. 소스 폴더에는 포함되지 않습니다.
-- 테스트용 환경변수 `DM_ANTHROPIC_BASE`, `DM_NOTION_BASE`로 API 주소를 바꿀 수 있습니다(평소에는 쓰지 않음).
+- 테스트용 환경변수 `DM_ANTHROPIC_BASE`, `DM_NOTION_BASE`, `DM_GOOGLE_AUTH`, `DM_GOOGLE_TOKEN`, `DM_CALENDAR_API`로 API 주소를 바꿀 수 있습니다(평소에는 쓰지 않음).
+- 구글 OAuth 클라이언트 보안 비밀은 저장소에 두지 않습니다. 설정 화면에서 넣거나, 빌드할 때 `-ldflags "-X main.buildClientSecret=…"`로 넣을 수 있습니다.

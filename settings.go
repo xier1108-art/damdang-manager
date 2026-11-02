@@ -15,19 +15,20 @@ import (
 
 // 설정 파일(키는 Windows 계정 단위로 암호화해 저장)
 type Settings struct {
-	AnthropicKey string   `json:"anthropicKey"`
-	Model        string   `json:"model"`
-	NotionToken  string   `json:"notionToken"`
-	NotionDB     string   `json:"notionDb"`
-	AutoSync     bool     `json:"autoSync"`
-	SyncMinutes  int      `json:"syncMinutes"`
-	Proxy        string   `json:"proxy"`
-	LastSync     string   `json:"lastSync"`
-	GcalURL      string   `json:"gcalUrl"`      // 구글 Apps Script 웹 앱 주소
-	GcalSecret   string   `json:"gcalSecret"`   // 스크립트와 맞추는 비밀 값
-	GcalCalendar string   `json:"gcalCalendar"` // 일정을 넣을 캘린더 ID
-	TrayHinted   bool     `json:"trayHinted"`   // 창을 닫으면 트레이로 숨는다는 안내를 보였는지
-	GcalShow     []string `json:"gcalShow"`     // 캘린더 화면에 같이 볼 구글 캘린더 ID(비면 일정을 넣는 캘린더)
+	AnthropicKey  string   `json:"anthropicKey"`
+	Model         string   `json:"model"`
+	NotionToken   string   `json:"notionToken"`
+	NotionDB      string   `json:"notionDb"`
+	AutoSync      bool     `json:"autoSync"`
+	SyncMinutes   int      `json:"syncMinutes"`
+	Proxy         string   `json:"proxy"`
+	LastSync      string   `json:"lastSync"`
+	GoogleRefresh string   `json:"googleRefresh"` // 구글 로그인 리프레시 토큰(암호화)
+	GoogleEmail   string   `json:"googleEmail"`   // 로그인한 구글 계정
+	GoogleSecret  string   `json:"googleSecret"`  // OAuth 클라이언트 보안 비밀(있으면 중계 서버 없이 직접, 암호화)
+	GcalCalendar  string   `json:"gcalCalendar"`  // 일정을 넣을 캘린더 ID
+	TrayHinted    bool     `json:"trayHinted"`    // 창을 닫으면 트레이로 숨는다는 안내를 보였는지
+	GcalShow      []string `json:"gcalShow"`      // 캘린더 화면에 같이 볼 구글 캘린더 ID(비면 일정을 넣는 캘린더)
 }
 
 const (
@@ -50,8 +51,8 @@ func loadSettings() Settings {
 	}
 	s.AnthropicKey = unseal(s.AnthropicKey)
 	s.NotionToken = unseal(s.NotionToken)
-	s.GcalURL = unseal(s.GcalURL)
-	s.GcalSecret = unseal(s.GcalSecret)
+	s.GoogleRefresh = unseal(s.GoogleRefresh)
+	s.GoogleSecret = unseal(s.GoogleSecret)
 	if s.Model == "" {
 		s.Model = defaultModel
 	}
@@ -69,8 +70,8 @@ func saveSettings(s Settings) error {
 	defer setMu.Unlock()
 	s.AnthropicKey = seal(s.AnthropicKey)
 	s.NotionToken = seal(s.NotionToken)
-	s.GcalURL = seal(s.GcalURL)
-	s.GcalSecret = seal(s.GcalSecret)
+	s.GoogleRefresh = seal(s.GoogleRefresh)
+	s.GoogleSecret = seal(s.GoogleSecret)
 	b, _ := json.MarshalIndent(s, "", " ")
 	return os.WriteFile(settingsPath(), b, 0o600)
 }
@@ -113,16 +114,6 @@ func mask(v string) string {
 	return v[:6] + "••••" + v[len(v)-4:]
 }
 
-func maskURL(v string) string {
-	if v == "" {
-		return ""
-	}
-	if len(v) <= 40 {
-		return "••••"
-	}
-	return v[:34] + "••••" + v[len(v)-10:]
-}
-
 // 화면에 보낼 때는 키를 가린 값만
 func handleSettings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -132,7 +123,8 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 			"anthropicKeyMasked": mask(s.AnthropicKey), "hasAnthropicKey": s.AnthropicKey != "",
 			"model": s.Model, "notionTokenMasked": mask(s.NotionToken), "hasNotionToken": s.NotionToken != "",
 			"notionDb": s.NotionDB, "autoSync": s.AutoSync, "syncMinutes": s.SyncMinutes, "proxy": s.Proxy, "lastSync": s.LastSync,
-			"hasGcal": s.GcalURL != "", "gcalUrlMasked": maskURL(s.GcalURL), "gcalCalendar": s.GcalCalendar, "gcalShow": s.GcalShow,
+			"hasGcal": s.GoogleRefresh != "", "googleEmail": s.GoogleEmail, "hasGoogleSecret": s.GoogleSecret != "" || buildClientSecret != "",
+			"gcalCalendar": s.GcalCalendar, "gcalShow": s.GcalShow,
 		})
 	case http.MethodPost:
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
@@ -158,8 +150,8 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 		if v, ok := str("proxy"); ok {
 			s.Proxy = v
 		}
-		if v, ok := str("gcalUrl"); ok {
-			s.GcalURL = v
+		if v, ok := str("googleSecret"); ok {
+			s.GoogleSecret = v
 		}
 		if v, ok := in["gcalShow"].([]any); ok {
 			s.GcalShow = nil
@@ -255,7 +247,8 @@ func handleNetTest(w http.ResponseWriter, r *http.Request) {
 		"anthropic": probe("https://api.anthropic.com/v1/models"),
 		"notion":    probe("https://api.notion.com/v1/users/me"),
 	}
-	if s := loadSettings(); s.GcalURL != "" {
+	res["google"] = probe("https://oauth2.googleapis.com/")
+	if s := loadSettings(); s.GoogleRefresh != "" {
 		if out, err := callGcal(s, "ping", nil); err != nil {
 			res["gcal"] = map[string]any{"ok": false, "msg": err.Error()}
 		} else {

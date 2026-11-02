@@ -399,7 +399,7 @@ async function gevEnsure(ym) {
     const r = await fetch('api/gcal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list', from: `${need[0]}-01`, to: ymd(new Date(ly, lm, 1)) }) });
     if (!r.ok) throw new Error(await r.text());
     const res = await r.json();
-    if (!Array.isArray(res.events)) throw new Error('연결 스크립트를 새 버전으로 바꿔야 볼 수 있습니다 (설정 › 구글 캘린더)');
+    if (!Array.isArray(res.events)) throw new Error('일정을 받지 못했습니다');
     const at = Date.now();
     for (const k of need) gev.cache.set(k, { at, list: res.events.filter((e) => e.start.slice(0, 7) === k) });
     gev.err = '';
@@ -790,23 +790,20 @@ async function openSettings(focus) {
       </section>
       <section class="set-sec" id="secGcal">
         <h3>구글 캘린더 <span class="hint">계약의 착수일·완수일을 '(착수) 요약명', '(완수) 요약명' 종일 일정으로 등록</span></h3>
-        ${st.hasGcal ? '' : `<ol class="steps">
-          <li><button type="button" class="btn sm" data-m="gcalCopy">연결 스크립트 복사</button> <span id="gcalCopied" class="hint"></span></li>
-          <li><button type="button" class="link-btn" data-m="gcalOpen">script.google.com</button>에서 <b>새 프로젝트</b>를 만들고, 원래 있던 내용을 지운 뒤 붙여넣고 저장</li>
-          <li><b>배포 › 새 배포</b> › 유형 <b>웹 앱</b>, 실행: <b>나</b>, 액세스 권한: <b>모든 사용자</b> › 배포 (처음 한 번 캘린더 접근 권한을 허용)</li>
-          <li>나온 <b>웹 앱 URL</b>(…/exec)을 아래에 붙여넣고 설정 저장</li>
-        </ol>`}
-        <label class="fld">웹 앱 URL<input id="sGcal" type="password" autocomplete="off" placeholder="${st.hasGcal ? '저장됨 ' + esc(st.gcalUrlMasked) + ' — 바꿀 때만 입력' : 'https://script.google.com/macros/s/…/exec'}"></label>
-        <label class="fld">캘린더 ID <span class="hint">구글 캘린더 › 캘린더 설정 › 캘린더 통합의 '캘린더 ID' · 비우면 기본 캘린더</span><input id="sGcalCal" value="${esc(st.gcalCalendar || '')}"></label>
+        ${st.hasGcal ? `<div class="g-acct"><span class="ok-dot" aria-hidden="true"></span><span><b>${esc(st.googleEmail || '구글 계정')}</b>로 연결됨</span><button type="button" class="btn sm" data-m="gLogout">로그아웃</button></div>`
+        : `<div class="g-acct"><button type="button" class="btn primary" data-m="gLogin" id="gLoginBtn"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>Google 계정으로 로그인</button><span class="hint" id="gLoginMsg">브라우저가 열리면 계정을 고르고 허용을 누르세요.</span></div>`}
+        <label class="fld">일정을 넣을 캘린더 ID <span class="hint">구글 캘린더 › 캘린더 설정 › 캘린더 통합의 '캘린더 ID' · 비우면 기본 캘린더</span><input id="sGcalCal" value="${esc(st.gcalCalendar || '')}"></label>
         ${st.hasGcal ? `<div class="fld">캘린더 화면에 같이 볼 캘린더 <span class="hint">회의 등 다른 일정을 계약 일정과 함께 표시 · 고르지 않으면 위 캘린더만</span>
           <div id="gcalCals" class="cal-pick"><button type="button" class="btn sm" data-m="gcalCals">캘린더 목록 불러오기</button>${(st.gcalShow || []).length ? `<span class="hint">지금 ${st.gcalShow.length}개 선택됨</span>` : ''}</div></div>
-        <p class="hint" style="margin:0">'같이 보기'는 연결 스크립트 2판부터 됩니다. 예전에 배포했다면 <b>연결 스크립트 복사</b> → 스크립트 편집기에 붙여넣고 저장 → <b>배포 › 배포 관리 › 수정(연필) › 버전: 새 버전 › 배포</b> (주소는 그대로).</p>` : ''}
-        ${st.hasGcal ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
           <button type="button" class="btn sm" data-m="gcalLink">기존 일정 연결</button>
-          <button type="button" class="btn sm" data-m="gcalCopy">연결 스크립트 복사</button>
-          <button type="button" class="btn sm" data-m="delGcal">연결 끊기</button>
-          <span id="gcalOut" class="test-out"><span class="hint">'기존 일정 연결'은 캘린더에 이미 있는 같은 제목·날짜의 일정을 찾아 계약과 묶습니다. 새 일정은 만들지 않습니다.</span><span id="gcalCopied" class="hint"></span></span>
+          <span id="gcalOut" class="test-out"><span class="hint">'기존 일정 연결'은 캘린더에 이미 있는 같은 제목·날짜의 일정을 찾아 계약과 묶습니다. 새 일정은 만들지 않습니다.</span></span>
         </div>` : ''}
+        <details class="g-adv">
+          <summary>기관망에서 로그인이 안 될 때 (클라이언트 보안 비밀)</summary>
+          <p class="hint" style="margin:0">로그인은 기본적으로 중계 서버를 거치는데, 기관망에서는 막혀 있을 수 있습니다. 구글 클라우드 콘솔 › Google 인증 플랫폼 › 클라이언트에서 이 앱의 <b>클라이언트 보안 비밀</b>을 복사해 넣어 두면 구글과 직접 연결합니다. 이 PC의 Windows 계정으로 암호화해 저장합니다.</p>
+          <label class="fld">클라이언트 보안 비밀<input id="sGSecret" type="password" autocomplete="off" placeholder="${st.hasGoogleSecret ? '저장됨 — 바꿀 때만 입력' : 'GOCSPX-…'}"></label>
+        </details>
       </section>
       <section class="set-sec">
         <h3>네트워크</h3>
@@ -853,7 +850,7 @@ async function openSettings(focus) {
       try {
         const r = await (await fetch('api/net-test')).json();
         const line = (n, x) => `<span class="${x.ok ? 'ok' : 'bad'}">${n} ${x.ok ? '연결됨' : '— ' + esc(x.msg)}</span>`;
-        let html = line('Claude API', r.anthropic) + line('노션', r.notion) + (r.gcal ? line(`구글 캘린더${r.gcal.name ? ` '${r.gcal.name}'` : ''}`, r.gcal) + (r.gcal.ok && !(r.gcal.version >= 2) ? '<span class="bad">연결 스크립트가 예전 판입니다 — 같이 보기를 쓰려면 새로 복사해 새 버전으로 배포하세요</span>' : '') : '');
+        let html = line('Claude API', r.anthropic) + line('노션', r.notion) + (r.google ? line('구글 로그인 서버', r.google) : '') + (r.gcal ? line(`구글 캘린더${r.gcal.name ? ` '${r.gcal.name}'` : ''}`, r.gcal) : '');
         if (r.notion.ok && cfg.hasNotionToken) {
           const t = await fetch('api/notion/test');
           html += t.ok ? `<span class="ok">DB '${esc((await t.json()).title)}' 접근 가능</span>` : `<span class="bad">${esc(await t.text())}</span>`;
@@ -863,16 +860,19 @@ async function openSettings(focus) {
     },
     delKey: async () => { await postSettings({ anthropicKey: '' }); closeModal(); openSettings(); },
     delNotion: async () => { await postSettings({ notionToken: '' }); closeModal(); openSettings(); },
-    delGcal: async () => { await postSettings({ gcalUrl: '' }); closeModal(); openSettings('#secGcal'); render(); },
-    gcalOpen: () => fetch('api/open-url?u=' + encodeURIComponent('https://script.google.com/home/projects/create')),
-    gcalCopy: async () => {
-      const out = $('#gcalCopied');
+    gLogin: async () => {
+      await saveSettingsForm();
+      const btn = $('#gLoginBtn'), msg = $('#gLoginMsg');
+      btn.disabled = true;
+      msg.innerHTML = '<span class="spin"></span> 브라우저에서 로그인을 마치면 여기로 돌아옵니다…';
       try {
-        const s = (await (await fetch('api/gcal/script')).json()).script;
-        await navigator.clipboard.writeText(s);
-        out.textContent = '복사했습니다 — 스크립트 편집기에 붙여넣으세요';
-      } catch (e) { out.textContent = '복사 실패: ' + (e.message || e); }
+        const r = await fetch('api/google/login', { method: 'POST' });
+        if (!r.ok) throw new Error(await r.text());
+        await loadCfg(); gevReset(); closeModal(); render(); openSettings('#secGcal');
+        toast('구글 캘린더에 연결했습니다');
+      } catch (e) { btn.disabled = false; msg.innerHTML = `<span class="gc-err">${esc(e.message || e)}</span>`; }
     },
+    gLogout: async () => { await fetch('api/google/logout', { method: 'POST' }); await loadCfg(); gevReset(); closeModal(); render(); openSettings('#secGcal'); },
     gcalLink: async () => { await saveSettingsForm(); gcalLinkExisting($('#gcalOut')); },
     gcalCals: async () => {
       const box = $('#gcalCals');
@@ -881,7 +881,7 @@ async function openSettings(focus) {
         const r = await fetch('api/gcal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'calendars' }) });
         if (!r.ok) throw new Error(await r.text());
         const cals = (await r.json()).calendars;
-        if (!Array.isArray(cals)) throw new Error('연결 스크립트를 새 버전으로 바꿔야 목록을 볼 수 있습니다 (아래 안내 참고)');
+        if (!Array.isArray(cals)) throw new Error('캘린더 목록을 받지 못했습니다');
         const chosen = (st.gcalShow || []).length ? st.gcalShow : [st.gcalCalendar];
         box.innerHTML = cals.map((c) => `<label class="check"><input type="checkbox" data-gshow value="${esc(c.id)}"${chosen.includes(c.id) ? ' checked' : ''}><span class="dot" style="background:${esc(c.color)}"></span>${esc(c.name)}</label>`).join('') + '<span class="hint">고른 뒤 설정 저장</span>';
       } catch (e) { box.innerHTML = `<span class="gc-err">${esc(e.message || e)}</span>`; }
@@ -905,7 +905,7 @@ async function saveSettingsForm() {
   const o = { model: $('#sModel').value, notionDb: $('#sDb').value, autoSync: $('#sAuto').checked, syncMinutes: Number($('#sMin').value) || 10, proxy: $('#sProxy').value };
   if ($('#sKey').value.trim()) o.anthropicKey = $('#sKey').value.trim();
   if ($('#sNotion').value.trim()) o.notionToken = $('#sNotion').value.trim();
-  if ($('#sGcal').value.trim()) o.gcalUrl = $('#sGcal').value.trim();
+  if ($('#sGSecret') && $('#sGSecret').value.trim()) o.googleSecret = $('#sGSecret').value.trim();
   o.gcalCalendar = $('#sGcalCal').value.trim();
   if ($$('[data-gshow]').length) o.gcalShow = $$('[data-gshow]').filter((c) => c.checked).map((c) => c.value);
   await postSettings(o);

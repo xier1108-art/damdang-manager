@@ -78,7 +78,8 @@ func main() {
 	mux.HandleFunc("/api/notion/sync", handleNotionSync)
 	mux.HandleFunc("/api/notion/test", handleNotionTest)
 	mux.HandleFunc("/api/gcal", handleGcal)
-	mux.HandleFunc("/api/gcal/script", handleGcalScript)
+	mux.HandleFunc("/api/google/login", handleGoogleLogin)
+	mux.HandleFunc("/api/google/logout", handleGoogleLogout)
 	mux.HandleFunc("/api/theme", func(w http.ResponseWriter, r *http.Request) {
 		setWindowTheme(r.URL.Query().Get("dark") == "1")
 		w.Write([]byte("ok"))
@@ -97,7 +98,7 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 	mux.HandleFunc("/api/info", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]any{"dataDir": dataDir, "dataFile": filepath.Join(dataDir, dataName), "version": "1.6.0"})
+		writeJSON(w, map[string]any{"dataDir": dataDir, "dataFile": filepath.Join(dataDir, dataName), "version": "1.7.0"})
 	})
 	go http.Serve(ln, mux)
 

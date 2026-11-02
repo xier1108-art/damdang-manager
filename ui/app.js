@@ -449,28 +449,46 @@ function calChip(ev) {
   const tip = `(${ev.k === 's' ? '착수' : '완수'}) ${x.title} · ${x.school} · ${x.status}${x.amount ? ' · ' + fmt(x.amount) + '원' : ''}`;
   return `<button type="button" class="${cls}" data-id="${x.id}" style="--c:${c[0]};--t:${c[1]};--k:${c[2]}" title="${esc(tip)}"><span class="cal-k">${ev.k === 's' ? '착수' : '완수'}</span><span class="cal-t">${esc(x.title || '(제목 없음)')}</span></button>`;
 }
+// 노션 캘린더처럼 주 단위로 이어서 스크롤 — 계약이 있는 기간 전체를 한 번에 그린다
+const CAL_ROW = 132; // 주 한 줄 높이(px), CSS .cal-week와 같게
+let calWeeks = null, calCounts = {}, calRaf = 0, calPopTop = 0, calTarget = null;
+const ymOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+const calDay = (i) => new Date(calWeeks.start.getFullYear(), calWeeks.start.getMonth(), calWeeks.start.getDate() + i);
+const calWeekOf = (ds) => Math.floor(Math.round((parseD(ds) - calWeeks.start) / DAY) / 7);
+function calRange() {
+  const t = parseD(todayStr());
+  let lo = new Date(t.getFullYear(), t.getMonth() - 12, 1), hi = new Date(t.getFullYear(), t.getMonth() + 18, 1);
+  const widen = (d) => { if (d < lo) lo = new Date(d.getFullYear(), d.getMonth(), 1); if (d >= hi) hi = new Date(d.getFullYear(), d.getMonth() + 1, 1); };
+  for (const x of data.items) for (const s of [x.startDate, x.endDate]) if (s) widen(parseD(s));
+  if (ui.calMonth) { const m = parseD(ui.calMonth + '-01'); widen(new Date(m.getFullYear(), m.getMonth() - 2, 1)); widen(new Date(m.getFullYear(), m.getMonth() + 3, 0)); }
+  const minLo = new Date(t.getFullYear() - 5, 0, 1), maxHi = new Date(t.getFullYear() + 6, 0, 1);
+  if (lo < minLo) lo = minLo;
+  if (hi > maxHi) hi = maxHi;
+  const start = new Date(lo.getFullYear(), lo.getMonth(), 1 - lo.getDay());
+  return { start, n: Math.ceil(Math.round((hi - start) / DAY) / 7) + 1 };
+}
 function renderCalendar() {
   const t = todayStr();
-  if (!ui.calMonth) ui.calMonth = t.slice(0, 7);
-  const [y, m] = ui.calMonth.split('-').map(Number);
-  const first = new Date(y, m - 1, 1);
-  const start = new Date(y, m - 1, 1 - first.getDay());
-  const lastDay = new Date(y, m, 0).getDate();
-  const weeks = Math.ceil((first.getDay() + lastDay) / 7);
+  const old = $('#calScroll');
+  let keepDate = null, keepOff = 0; // 다시 그려도 보던 주를 그대로
+  if (old && calWeeks && !calTarget) { const w = Math.floor(old.scrollTop / CAL_ROW); keepDate = ymd(calDay(w * 7)); keepOff = old.scrollTop - w * CAL_ROW; }
+  calWeeks = calRange();
   const evs = calEvents();
-  let nS = 0, nE = 0;
-  for (const [d, arr] of evs) if (d.startsWith(ui.calMonth)) for (const e of arr) e.k === 's' ? nS++ : nE++;
+  calCounts = {};
+  for (const [d, arr] of evs) { const c = calCounts[d.slice(0, 7)] || (calCounts[d.slice(0, 7)] = { s: 0, e: 0 }); for (const e of arr) e.k === 's' ? c.s++ : c.e++; }
   const MAX = 4;
-  let cells = WEEK.map((w, i) => `<div class="cal-wd${i === 0 ? ' sun' : i === 6 ? ' sat' : ''}">${w}</div>`).join('');
-  for (let i = 0; i < weeks * 7; i++) {
-    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
-    const ds = ymd(d), arr = evs.get(ds) || [];
-    const out = d.getMonth() !== m - 1;
-    const dn = d.getDate() === 1 ? `${d.getMonth() + 1}월 1일` : d.getDate();
-    const shown = arr.length > MAX ? arr.slice(0, MAX - 1) : arr;
-    cells += `<div class="cal-day${out ? ' out' : ''}${ds === t ? ' today' : ''}${d.getDay() === 0 ? ' sun' : ''}" data-date="${ds}">
-      <div class="cal-dn"><span>${dn}</span></div>
-      <div class="cal-evs">${shown.map(calChip).join('')}${arr.length > shown.length ? `<button type="button" class="cal-more" data-more="${ds}">${arr.length - shown.length}개 더</button>` : ''}</div></div>`;
+  let body = '';
+  for (let w = 0; w < calWeeks.n; w++) {
+    body += '<div class="cal-week">';
+    for (let i = 0; i < 7; i++) {
+      const d = calDay(w * 7 + i), ds = ymd(d), arr = evs.get(ds) || [];
+      const dn = d.getDate() === 1 ? `${d.getMonth() + 1}월 1일` : d.getDate();
+      const shown = arr.length > MAX ? arr.slice(0, MAX - 1) : arr;
+      body += `<div class="cal-day${ds === t ? ' today' : ''}${i === 0 ? ' sun' : ''}" data-date="${ds}" data-m="${ds.slice(0, 7)}">
+        <div class="cal-dn"><span>${dn}</span></div>
+        <div class="cal-evs">${shown.map(calChip).join('')}${arr.length > shown.length ? `<button type="button" class="cal-more" data-more="${ds}">${arr.length - shown.length}개 더</button>` : ''}</div></div>`;
+    }
+    body += '</div>';
   }
   let pop = '';
   if (ui.calMore && evs.get(ui.calMore)) {
@@ -479,33 +497,68 @@ function renderCalendar() {
   }
   $('#calendarView').innerHTML = `<div class="cal">
     <div class="cal-bar">
-      <h2>${y}년 ${m}월</h2>
+      <h2 id="calTitle"></h2>
       <div class="cal-nav">
         <button type="button" class="icon-btn" data-cal="prev" aria-label="이전 달"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button>
         <button type="button" class="btn sm" data-cal="today">오늘</button>
         <button type="button" class="icon-btn" data-cal="next" aria-label="다음 달"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
       </div>
-      <span class="muted cal-sum">이번 달 착수 ${nS} · 완수 ${nE}</span>
+      <span class="muted cal-sum" id="calSum"></span>
       ${cfg.hasGcal ? `<span class="cal-gc" title="등록한 계약은 구글 캘린더 '업무'에도 같은 일정이 있습니다">${gcalBadge()}</span>` : ''}
     </div>
-    <div class="cal-grid" style="grid-template-rows:auto repeat(${weeks},minmax(112px,1fr))">${cells}</div>
-    ${pop}</div>`;
-  if (ui.calMore) {
-    const cell = $(`#calendarView .cal-day[data-date="${ui.calMore}"]`), p = $('#calendarView .cal-pop');
-    if (cell && p) {
-      const wrap = $('#calendarView .cal');
-      const cr = cell.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
-      p.style.left = Math.max(8, Math.min(wr.width - 300, cr.left - wr.left - 20)) + 'px';
-      p.style.top = Math.max(8, Math.min(wr.height - p.offsetHeight - 8, cr.top - wr.top - 8)) + 'px';
-    }
+    <div class="cal-wds">${WEEK.map((w, i) => `<div class="cal-wd${i === 0 ? ' sun' : ''}">${w}</div>`).join('')}</div>
+    <div class="cal-scroll" id="calScroll"><div class="cal-body">${body}${pop}</div></div>
+    <style id="calCur"></style></div>`;
+  const sc = $('#calScroll');
+  if (keepDate) sc.scrollTop = calWeekOf(keepDate) * CAL_ROW + keepOff;
+  else sc.scrollTop = calWeekOf((calTarget || ui.calMonth || t.slice(0, 7)) + '-01') * CAL_ROW;
+  calTarget = null;
+  calSync(true);
+  sc.addEventListener('scroll', onCalScroll, { passive: true });
+  const p = $('#calendarView .cal-pop'), cell = ui.calMore && $(`#calendarView .cal-day[data-date="${ui.calMore}"]`);
+  if (p && cell) {
+    const bw = $('#calendarView .cal-body').clientWidth;
+    p.style.left = Math.max(8, Math.min(bw - 290, cell.offsetLeft - 20)) + 'px';
+    p.style.top = Math.max(sc.scrollTop + 8, Math.min(sc.scrollTop + sc.clientHeight - p.offsetHeight - 8, cell.offsetTop - 8)) + 'px';
+    calPopTop = sc.scrollTop;
   }
 }
-function calMove(dir) {
-  const [y, m] = (ui.calMonth || todayStr().slice(0, 7)).split('-').map(Number);
-  const d = new Date(y, m - 1 + dir, 1);
-  ui.calMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+function onCalScroll() {
+  const sc = $('#calScroll');
+  if (ui.calMore && sc && Math.abs(sc.scrollTop - calPopTop) > 40) { ui.calMore = null; const p = $('#calendarView .cal-pop'); if (p) p.remove(); }
+  if (!calRaf) calRaf = requestAnimationFrame(() => { calRaf = 0; calSync(); });
+}
+// 화면에 날짜가 가장 많이 보이는 달을 제목으로, 다른 달 날짜는 흐리게
+function calSync(force) {
+  const sc = $('#calScroll');
+  if (!sc || !calWeeks) return;
+  const first = Math.max(0, Math.floor(sc.scrollTop / CAL_ROW)), last = Math.min(calWeeks.n - 1, Math.floor((sc.scrollTop + sc.clientHeight - 1) / CAL_ROW));
+  const tally = {};
+  for (let w = first; w <= last; w++) for (let i = 0; i < 7; i++) { const k = ymOf(calDay(w * 7 + i)); tally[k] = (tally[k] || 0) + 1; }
+  const cur = Object.keys(tally).sort().reduce((a, b) => (tally[b] > tally[a] ? b : a));
+  if (cur === ui.calMonth && !force) return;
+  ui.calMonth = cur;
+  const [y, m] = cur.split('-').map(Number), c = calCounts[cur] || { s: 0, e: 0 };
+  $('#calTitle').textContent = `${y}년 ${m}월`;
+  $('#calSum').textContent = `이 달 착수 ${c.s} · 완수 ${c.e}`;
+  const o = `#calendarView .cal-day:not([data-m="${cur}"])`;
+  $('#calCur').textContent = `${o}{background:var(--sunken)}${o} .cal-dn{color:var(--faint)}${o} .cal-ev{opacity:.6}`;
+}
+function calGoto(ym, smooth) {
   ui.calMore = null;
-  renderCalendar();
+  const sc = $('#calScroll');
+  const idx = calWeeks ? calWeekOf(ym + '-01') : -1;
+  if (!sc || idx < 0 || idx >= calWeeks.n) { calTarget = ym; ui.calMonth = ym; renderCalendar(); return; }
+  const p = $('#calendarView .cal-pop');
+  if (p) p.remove();
+  calGoto.last = { ym, at: Date.now() };
+  sc.scrollTo({ top: idx * CAL_ROW, behavior: smooth ? 'smooth' : 'auto' });
+}
+function calMove(dir) {
+  // 부드럽게 넘어가는 중에 또 누르면 목표 달에서 이어서
+  const base = calGoto.last && Date.now() - calGoto.last.at < 700 ? calGoto.last.ym : (ui.calMonth || todayStr().slice(0, 7));
+  const [y, m] = base.split('-').map(Number);
+  calGoto(ymOf(new Date(y, m - 1 + dir, 1)), true);
 }
 
 // ---------- 렌더: 상세 ----------
@@ -1220,7 +1273,7 @@ function bind() {
     const cpb = t.closest('[data-cp]'); if (cpb) { copyCell(cpb); return; } // 행 선택보다 먼저
     const th_ = t.closest('[data-theme-set]'); if (th_) { applyTheme(th_.dataset.themeSet); return; }
     const cal = t.closest('[data-cal]');
-    if (cal) { const c = cal.dataset.cal; if (c === 'prev') calMove(-1); else if (c === 'next') calMove(1); else if (c === 'today') { ui.calMonth = null; ui.calMore = null; renderCalendar(); } else { ui.calMore = null; renderCalendar(); } return; }
+    if (cal) { const c = cal.dataset.cal; if (c === 'prev') calMove(-1); else if (c === 'next') calMove(1); else if (c === 'today') calGoto(todayStr().slice(0, 7), true); else { ui.calMore = null; const p = $('#calendarView .cal-pop'); if (p) p.remove(); } return; }
     const more = t.closest('[data-more]'); if (more) { ui.calMore = more.dataset.more; renderCalendar(); return; }
     const row = t.closest('tr.row,[data-id].tl-bar,.tl-lab[data-id],.cal-ev[data-id]'); if (row) { select(row.dataset.id); return; }
     if (ui.calMore && !t.closest('.cal-pop')) { ui.calMore = null; renderCalendar(); }

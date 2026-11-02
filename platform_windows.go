@@ -44,6 +44,8 @@ func runWindow(url string) {
 	defer w.Destroy()
 	mainView = w
 	w.SetSize(1180, 720, webview2.HintMin)
+	installTray(w)
+	defer removeTray()
 	w.Navigate(url)
 	w.Run()
 }

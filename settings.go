@@ -26,6 +26,7 @@ type Settings struct {
 	GcalURL      string `json:"gcalUrl"`      // 구글 Apps Script 웹 앱 주소
 	GcalSecret   string `json:"gcalSecret"`   // 스크립트와 맞추는 비밀 값
 	GcalCalendar string `json:"gcalCalendar"` // 일정을 넣을 캘린더 ID
+	TrayHinted   bool   `json:"trayHinted"`   // 창을 닫으면 트레이로 숨는다는 안내를 보였는지
 }
 
 const (

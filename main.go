@@ -51,8 +51,13 @@ func main() {
 	url := fmt.Sprintf("http://%s/", ln.Addr().String())
 
 	if other := checkRunning(); other != "" {
-		// 이미 실행 중이면 기존 창 주소를 기본 브라우저로 열고 종료
-		openInBrowser(other)
+		// 이미 실행 중이면(트레이에 숨어 있어도) 그 창을 앞으로 불러오고 종료
+		c := http.Client{Timeout: 1500 * time.Millisecond}
+		if resp, err := c.Get(other + "api/show"); err == nil && resp.StatusCode == http.StatusOK {
+			resp.Body.Close()
+			return
+		}
+		openInBrowser(other) // 예전 버전처럼 창을 부를 수 없으면 브라우저로
 		return
 	}
 	writePortFile(url)
@@ -78,6 +83,10 @@ func main() {
 		setWindowTheme(r.URL.Query().Get("dark") == "1")
 		w.Write([]byte("ok"))
 	})
+	mux.HandleFunc("/api/show", func(w http.ResponseWriter, r *http.Request) {
+		showMainWindow()
+		w.Write([]byte("ok"))
+	})
 	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, r *http.Request) {
 		pingMu.Lock()
 		lastPing = time.Now()
@@ -85,7 +94,7 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 	mux.HandleFunc("/api/info", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]any{"dataDir": dataDir, "dataFile": filepath.Join(dataDir, dataName), "version": "1.4.1"})
+		writeJSON(w, map[string]any{"dataDir": dataDir, "dataFile": filepath.Join(dataDir, dataName), "version": "1.5.0"})
 	})
 	go http.Serve(ln, mux)
 

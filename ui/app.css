@@ -417,3 +417,14 @@ td .pill.tint{font-weight:500;border-radius:5px;padding:2px 8px;font-size:12.5px
 .bz-list .bz-role{font-size:11px;font-weight:700;padding:1px 6px;border-radius:5px;background:var(--seg);color:var(--ink2);flex:none}
 .bz-list .bz-nm{overflow:hidden;text-overflow:ellipsis;min-width:0}
 .bz-list .muted{font-weight:500;font-size:12px;flex:none}
+
+/* 1.5 — 캘린더 주 단위 연속 스크롤 (노션 캘린더 방식) */
+#calendarView.cal-wrap{flex:1 0 520px;display:flex;flex-direction:column;overflow-x:auto;overflow-y:hidden}
+#calendarView .cal{flex:1;min-height:0}
+.cal-wds{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.cal-scroll{flex:1;min-height:0;overflow-y:auto;scroll-snap-type:y proximity;overscroll-behavior:contain}
+.cal-body{position:relative}
+.cal-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));height:132px;scroll-snap-align:start}
+.cal-week .cal-day{overflow:hidden;transition:background-color .15s}
+.cal-week .cal-dn{transition:color .15s}
+.cal-week .cal-ev{height:22px}

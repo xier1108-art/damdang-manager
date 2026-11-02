@@ -20,6 +20,7 @@ func selectInExplorer(p string) { fmt.Println("exported:", p) }
 func openInBrowser(u string)    { fmt.Println("open:", u) }
 func fatal(msg string)          { fmt.Fprintln(os.Stderr, msg); os.Exit(1) }
 func setWindowTheme(dark bool)  {}
+func showMainWindow()           {}
 
 func protect(b []byte) ([]byte, error)   { return nil, errors.New("unsupported") }
 func unprotect(b []byte) ([]byte, error) { return nil, errors.New("unsupported") }

@@ -6,6 +6,8 @@
 - `textextract.go` — HWP·HWPX·DOCX 본문 추출
 - `notion.go` — 노션 양방향 동기화
 - `settings.go` — 설정(키는 Windows DPAPI 암호화), 연결 테스트
+- `docs.go` — 계약 문서 보관(문서\학교\요약명 폴더)
+- `tray_windows.go` — 트레이 아이콘, 창을 닫으면 숨기기
 - `gcal.go` — 구글 캘린더 '업무'에 (착수)/(완수) 일정 등록 (사용자 계정의 Apps Script 웹 앱을 거침)
 - `export.go` — 엑셀 내보내기
 - `platform_windows.go` / `platform_other.go` — 창(WebView2)·OS 기능

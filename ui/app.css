@@ -428,3 +428,44 @@ td .pill.tint{font-weight:500;border-radius:5px;padding:2px 8px;font-size:12.5px
 .cal-week .cal-day{overflow:hidden;transition:background-color .15s}
 .cal-week .cal-dn{transition:color .15s}
 .cal-week .cal-ev{height:22px}
+
+/* 1.6 — 계약 문서 · 변경 이력 · 구글 일정 같이 보기 */
+.sec{display:flex;flex-direction:column;gap:8px}
+.sec-h .row-btns{display:flex;gap:2px}
+.doc-box{border:1px dashed transparent;border-radius:10px;margin:0 -8px;padding:6px 8px;transition:background-color .12s,border-color .12s}
+.doc-box.over{border-color:var(--accent);background:var(--accent-soft)}
+.doc-list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.doc{display:flex;align-items:center;gap:8px;padding:9px 12px;border:0;border-bottom:1px solid var(--line2);background:var(--surface);color:var(--ink);text-align:left;cursor:pointer;font-size:13px;min-width:0}
+.doc:last-child{border-bottom:0}
+.doc:hover{background:var(--hover)}
+.doc svg{color:var(--muted)}
+.doc .dn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc .muted{font-size:12px;flex:none;font-variant-numeric:tabular-nums}
+.doc-empty{padding:12px;font-size:12px;color:var(--muted);line-height:1.5}
+.hist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;max-height:320px;overflow:auto}
+.h-item{padding:10px 12px;border-bottom:1px solid var(--line2);display:flex;flex-direction:column;gap:6px;font-size:13px}
+.h-item:last-child{border-bottom:0}
+.h-top{display:flex;align-items:center;gap:8px}
+.h-top b{font-variant-numeric:tabular-nums}
+.h-src{font-size:11px;font-weight:700;padding:1px 7px;border-radius:5px;background:var(--seg);color:var(--ink2)}
+.h-top .sp{flex:1}
+.h-del{width:24px;height:24px;border:0;border-radius:6px;background:none;color:var(--faint);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;opacity:0}
+.h-del svg{width:13px;height:13px}
+.h-item:hover .h-del,.h-del:focus-visible{opacity:1}
+.h-del:hover{background:var(--hover);color:var(--bad-ink)}
+.h-item ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+.h-item li{display:grid;grid-template-columns:72px 1fr;gap:8px}
+.hk{color:var(--muted);font-weight:600;font-size:12px;padding-top:1px}
+.hv{white-space:pre-wrap;word-break:break-all;font-variant-numeric:tabular-nums}
+.hv del{color:var(--warn-ink);opacity:.85}
+.hv ins{color:var(--ok-ink);text-decoration:none;font-weight:600}
+.hf{display:flex;gap:6px;align-items:flex-start;font-size:12px;color:var(--muted)}
+.hf svg{width:13px;height:13px;margin-top:2px}
+.cal-gtog{margin:0!important;font-size:13px}
+.cal-gtog+.cal-gerr,.cal-gerr{font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-ev.cal-g{cursor:default;background:color-mix(in srgb,var(--c) 16%,var(--surface));box-shadow:inset 3px 0 0 var(--c);color:var(--ink)}
+.cal-ev.cal-g .cal-k{color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums}
+:root[data-theme=dark] .cal-ev.cal-g{background:color-mix(in srgb,var(--c) 28%,var(--surface))}
+:root[data-theme=dark] .cal-ev.cal-g .cal-k{color:rgba(255,255,255,.7)}
+.cal-pick{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.cal-pick .check{margin:0;font-weight:500;color:var(--ink2);font-size:13px}

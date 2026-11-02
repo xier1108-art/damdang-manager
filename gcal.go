@@ -19,14 +19,22 @@ import (
 const gcalScript = `// 담당사업관리 → 구글 캘린더 연결용 스크립트
 // script.google.com에서 새 프로젝트를 만들고 이 내용을 그대로 붙여넣은 뒤
 // 배포 › 새 배포 › 웹 앱 (실행: 나, 액세스 권한: 모든 사용자)으로 배포하세요.
+// 이미 배포했다면: 내용을 바꿔 저장한 뒤 배포 › 배포 관리 › 수정(연필) › 버전: 새 버전 › 배포 (주소는 그대로)
 const SECRET = '%s';
+const VERSION = 2;
 
 function doPost(e) {
   const req = JSON.parse(e.postData.contents);
   if (req.secret !== SECRET) return out({ ok: false, error: '비밀 값이 맞지 않습니다. 프로그램 설정의 스크립트로 다시 배포하세요.' });
   const cal = req.calendarId ? CalendarApp.getCalendarById(req.calendarId) : CalendarApp.getDefaultCalendar();
   if (!cal) return out({ ok: false, error: '캘린더를 찾지 못했습니다: ' + req.calendarId });
-  if (req.action === 'ping') return out({ ok: true, name: cal.getName() });
+  if (req.action === 'ping') return out({ ok: true, name: cal.getName(), version: VERSION });
+  if (req.action === 'calendars') {
+    return out({ ok: true, version: VERSION, calendars: CalendarApp.getAllCalendars().map(function (c) {
+      return { id: c.getId(), name: c.getName(), color: c.getColor() };
+    }) });
+  }
+  if (req.action === 'list') return out({ ok: true, version: VERSION, events: listEvents(cal, req) });
   const results = (req.ops || []).map(function (op) {
     try { return run(cal, op); } catch (err) { return { ok: false, error: String(err) }; }
   });
@@ -56,6 +64,31 @@ function run(cal, op) {
   return { ok: true, id: ev.getId() };
 }
 
+// 같이 볼 캘린더들의 일정 (프로그램이 만든 (착수)/(완수) 일정은 빼고)
+function listEvents(cal, req) {
+  const from = day(req.from), to = day(req.to);
+  const ids = (req.calendars && req.calendars.length) ? req.calendars : [cal.getId()];
+  const events = [];
+  ids.forEach(function (id) {
+    const c = CalendarApp.getCalendarById(id);
+    if (!c) return;
+    const tz = c.getTimeZone(), color = c.getColor(), name = c.getName();
+    c.getEvents(from, to).forEach(function (ev) {
+      const title = ev.getTitle();
+      if (/^\((착수|완수)\) /.test(title)) return;
+      const all = ev.isAllDayEvent();
+      const s = all ? ev.getAllDayStartDate() : ev.getStartTime();
+      const en = all ? new Date(ev.getAllDayEndDate().getTime() - 86400000) : ev.getEndTime();
+      events.push({
+        id: ev.getId() + '|' + Utilities.formatDate(s, tz, 'yyyyMMdd'), title: title, allDay: all,
+        start: Utilities.formatDate(s, tz, 'yyyy-MM-dd'), end: Utilities.formatDate(en, tz, 'yyyy-MM-dd'),
+        time: all ? '' : Utilities.formatDate(s, tz, 'HH:mm'), color: color, evColor: String(ev.getColor() || ''), cal: name
+      });
+    });
+  });
+  return events;
+}
+
 function out(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 `
 
@@ -75,10 +108,19 @@ func handleGcalScript(w http.ResponseWriter, r *http.Request) {
 }
 
 func callGcal(s Settings, action string, ops []any) (map[string]any, error) {
+	return callGcalWith(s, map[string]any{"action": action, "ops": ops})
+}
+
+// req에 비밀 값과 캘린더 ID를 더해 스크립트로 보낸다
+func callGcalWith(s Settings, req map[string]any) (map[string]any, error) {
 	if s.GcalURL == "" {
 		return nil, fmt.Errorf("구글 캘린더 연결이 설정되지 않았습니다")
 	}
-	body, _ := json.Marshal(map[string]any{"secret": s.GcalSecret, "calendarId": s.GcalCalendar, "action": action, "ops": ops})
+	req["secret"], req["calendarId"] = s.GcalSecret, s.GcalCalendar
+	if req["action"] == "list" {
+		req["calendars"] = s.GcalShow
+	}
+	body, _ := json.Marshal(req)
 	// 웹 앱은 결과 주소로 302를 돌려주고, Go 클라이언트는 이를 GET으로 따라간다
 	resp, err := httpClient(5*time.Minute).Post(s.GcalURL, "application/json", bytes.NewReader(body))
 	if err != nil {
@@ -110,18 +152,15 @@ func handleGcal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method", 405)
 		return
 	}
-	var in struct {
-		Action string `json:"action"`
-		Ops    []any  `json:"ops"`
-	}
+	var in map[string]any // action, ops, from, to
 	if err := json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&in); err != nil {
 		http.Error(w, "잘못된 요청", 400)
 		return
 	}
-	if in.Action == "" {
-		in.Action = "ops"
+	if a, _ := in["action"].(string); a == "" {
+		in["action"] = "ops"
 	}
-	out, err := callGcal(loadSettings(), in.Action, in.Ops)
+	out, err := callGcalWith(loadSettings(), in)
 	if err != nil {
 		http.Error(w, err.Error(), 502)
 		return

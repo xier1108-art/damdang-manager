@@ -227,13 +227,11 @@ function renderTop() {
   $('#expandWrap').hidden = ui.view !== 'list';
   $('#activeOnlyWrap').hidden = ui.view === 'list';
   $('#listView').hidden = ui.view !== 'list';
-  $('#timelineView').hidden = ui.view !== 'timeline';
   $('#calendarView').hidden = ui.view !== 'calendar';
 }
 function renderView() {
   if (ui.view === 'list') renderList();
-  else if (ui.view === 'calendar') renderCalendar();
-  else renderTimeline();
+  else renderCalendar();
 }
 
 // ---------- 렌더: 목록 ----------
@@ -369,64 +367,6 @@ function renderList() {
   $('#listView').innerHTML = `<table${fixed ? ` class="fixed" style="width:${colSum()}px"` : ''}>${colgroup()}<thead><tr>${th('요약명', 'title')}${th('항목', 'category')}${th('상태', 'status')}<th data-col="contractor">계약자${RZ('contractor')}</th>${th('계약금액(원)', 'amount', true)}${th('계약일', 'contractDate')}${th('착수일', 'startDate', false, 'col-per')}${th('완수일', 'endDate')}${th('남은 기간', 'endDate', true, '', 'dday')}</tr></thead>${body}</table>`;
 }
 
-// ---------- 렌더: 타임라인 ----------
-function renderTimeline() {
-  const MW = 56;
-  const tree = visibleTree();
-  const rows = [];
-  for (const g of tree) {
-    const gr = [];
-    for (const r of g.rows) {
-      if (ui.activeOnly && r.item.status !== '진행' && !r.kids.some((k) => k.status === '진행')) continue;
-      gr.push({ x: r.item, lvl: 0 });
-      for (const k of r.kids) if (!ui.activeOnly || k.status === '진행') gr.push({ x: k, lvl: 1 });
-    }
-    if (gr.length) { if (ui.school === '__all') rows.push({ grp: g.school }); rows.push(...gr); }
-  }
-  const dated = rows.filter((r) => r.x && (r.x.endDate || r.x.startDate));
-  if (!dated.length) { $('#timelineView').innerHTML = '<div class="empty"><strong>표시할 일정이 없습니다</strong>착수일·완수일이 입력된 계약만 나타납니다.</div>'; return; }
-  const today = parseD(todayStr());
-  let min = new Date(today.getFullYear(), today.getMonth() - 6, 1), max = new Date(today.getFullYear(), today.getMonth() + 12, 1);
-  for (const r of dated) {
-    const s = parseD(r.x.startDate || r.x.contractDate || r.x.endDate), e = parseD(r.x.endDate || r.x.startDate);
-    if (s && s < min) min = new Date(s.getFullYear(), s.getMonth(), 1);
-    if (e && e > max) max = new Date(e.getFullYear(), e.getMonth() + 1, 1);
-  }
-  const lo = new Date(today.getFullYear() - 2, today.getMonth(), 1), hi = new Date(today.getFullYear() + 3, today.getMonth(), 1);
-  if (min < lo) min = lo; if (max > hi) max = hi;
-  const months = [];
-  for (let d = new Date(min); d < max; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) months.push(new Date(d));
-  const W = months.length * MW;
-  const xOf = (d) => {
-    const mi = (d.getFullYear() - min.getFullYear()) * 12 + d.getMonth() - min.getMonth();
-    const dim = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    return Math.max(0, Math.min(W, mi * MW + ((d.getDate() - 1) / dim) * MW));
-  };
-  const head = months.map((m) => `<div class="tl-m${m.getMonth() === 0 ? ' y' : ''}" style="width:${MW}px">${m.getMonth() === 0 ? m.getFullYear() + '.' : ''}${String(m.getMonth() + 1).padStart(2, '0')}</div>`).join('');
-  const tx = xOf(today);
-  let body = '';
-  for (const r of rows) {
-    if (r.grp) { body += `<div class="tl-row grp"><div class="tl-lab"><span class="dot" style="background:${schoolColor(r.grp)[0]}"></span>&nbsp;${esc(r.grp)}</div><div class="tl-track" style="width:${W}px"></div></div>`; continue; }
-    const x = r.x;
-    const sS = x.startDate || x.contractDate, eS = x.endDate;
-    let bar = '';
-    if (sS || eS) {
-      const s = parseD(sS || eS), e = parseD(eS || sS);
-      const l = xOf(s), w = Math.max(6, xOf(e) - l);
-      const cls = isLate(x) ? 'late' : (x.status === '진행' && !sS ? 'open' : x.status);
-      const tip = `${x.title} · ${shortD(sS)} → ${shortD(eS)}${x.amount ? ' · ' + fmt(x.amount) + '원' : ''}`;
-      bar = `<div class="tl-bar ${esc(cls)}" data-id="${x.id}" style="left:${l}px;width:${w}px" title="${esc(tip)}">${w > 70 ? esc(x.phase !== '단일' ? x.phase : '') : ''}</div>`;
-    }
-    body += `<div class="tl-row${r.lvl ? ' child' : ''}"><div class="tl-lab" data-id="${x.id}" title="${esc(x.title)}">${r.lvl ? '<span class="branch">└</span>' : ''}<span>${esc(x.title)}</span></div><div class="tl-track" style="width:${W}px">${bar}</div></div>`;
-  }
-  $('#timelineView').innerHTML = `<div class="tl" style="width:${W + 260}px">
-    <div class="tl-head"><div class="tl-lab" style="font-size:12px;font-weight:600;color:var(--muted)">요약명</div><div class="tl-months">${head}</div></div>
-    <div style="position:relative">${body}<div class="tl-today" style="left:${260 + tx}px"><b>오늘</b></div></div>
-    <div class="tl-legend"><span><i style="background:var(--accent)"></i>진행</span><span><i style="background:#D9822B"></i>완수일 경과</span><span><i style="background:repeating-linear-gradient(135deg,#2F5BEA 0 3px,#5B7FF0 3px 6px)"></i>착수일 미입력</span><span><i style="background:#B6BCC6"></i>완료</span><span><i style="background:#D95C5C"></i>중지</span></div></div>`;
-  const wrap = $('#timelineView');
-  if (!wrap.dataset.scrolled) { wrap.scrollLeft = Math.max(0, tx - 360); wrap.dataset.scrolled = '1'; }
-}
-
 // ---------- 렌더: 캘린더 (노션 캘린더 월 보기) ----------
 // 구글 캘린더 '업무'와 같은 규칙: 착수일에 (착수) 요약명, 완수일에 (완수) 요약명
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
@@ -442,7 +382,53 @@ function calEvents() {
   for (const arr of map.values()) arr.sort((a, b) => (a.k === b.k ? 0 : a.k === 's' ? -1 : 1) || (a.x.title || '').localeCompare(b.x.title || '', 'ko'));
   return map;
 }
+// 구글 캘린더의 다른 일정(회의 등) — 달 단위로 받아 두고 5분 지나면 다시 받는다
+const GCAL_EVENT_COLORS = { 1: '#7986CB', 2: '#33B679', 3: '#8E24AA', 4: '#E67C73', 5: '#F6BF26', 6: '#F4511E', 7: '#039BE5', 8: '#616161', 9: '#3F51B5', 10: '#0B8043', 11: '#D50000' };
+const gev = { on: true, cache: new Map(), byDay: new Map(), busy: false, err: '' };
+function gevOn() { return gev.on && cfg.hasGcal; }
+function gevReset() { gev.cache.clear(); gev.byDay.clear(); gev.err = ''; }
+async function gevEnsure(ym) {
+  if (!gevOn() || gev.busy) return;
+  const [y, m] = ym.split('-').map(Number);
+  const months = [-1, 0, 1, 2].map((d) => ymOf(new Date(y, m - 1 + d, 1)));
+  const need = months.filter((k) => { const c = gev.cache.get(k); return !c || Date.now() - c.at > 300000; });
+  if (!need.length) return;
+  const [ly, lm] = need[need.length - 1].split('-').map(Number);
+  gev.busy = true;
+  try {
+    const r = await fetch('api/gcal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list', from: `${need[0]}-01`, to: ymd(new Date(ly, lm, 1)) }) });
+    if (!r.ok) throw new Error(await r.text());
+    const res = await r.json();
+    if (!Array.isArray(res.events)) throw new Error('연결 스크립트를 새 버전으로 바꿔야 볼 수 있습니다 (설정 › 구글 캘린더)');
+    const at = Date.now();
+    for (const k of need) gev.cache.set(k, { at, list: res.events.filter((e) => e.start.slice(0, 7) === k) });
+    gev.err = '';
+  } catch (e) {
+    gev.err = e.message || String(e);
+    for (const k of need) gev.cache.set(k, { at: Date.now(), list: (gev.cache.get(k) || {}).list || [] }); // 실패해도 5분은 다시 묻지 않음
+  } finally { gev.busy = false; }
+  gev.byDay.clear();
+  const seen = new Set();
+  for (const { list } of gev.cache.values()) for (const e of list) {
+    if (seen.has(e.id)) continue;
+    seen.add(e.id);
+    const s = parseD(e.start), en = parseD(e.end || e.start);
+    for (let d = s, n = 0; d <= en && n < 62; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1), n++) {
+      const ds = ymd(d);
+      if (!gev.byDay.has(ds)) gev.byDay.set(ds, []);
+      gev.byDay.get(ds).push({ g: e });
+    }
+  }
+  for (const arr of gev.byDay.values()) arr.sort((a, b) => (a.g.allDay === b.g.allDay ? 0 : a.g.allDay ? -1 : 1) || a.g.time.localeCompare(b.g.time) || a.g.title.localeCompare(b.g.title, 'ko'));
+  if (ui.view === 'calendar') renderCalendar();
+}
+function gevChip(e) {
+  const c = GCAL_EVENT_COLORS[e.evColor] || e.color || '#7A808C';
+  const tip = `${e.title}${e.time ? ' · ' + e.time : ''} · ${e.cal}`;
+  return `<div class="cal-ev cal-g" style="--c:${esc(c)}" title="${esc(tip)}">${e.time ? `<span class="cal-k">${esc(e.time)}</span>` : ''}<span class="cal-t">${esc(e.title)}</span></div>`;
+}
 function calChip(ev) {
+  if (ev.g) return gevChip(ev.g);
   const x = ev.x, c = schoolColor(x.school);
   const late = ev.k === 'e' && isLate(x);
   const cls = `cal-ev k-${ev.k}${late ? ' late' : ''}${x.status !== '진행' ? ' dim' : ''}${ui.sel === x.id ? ' sel' : ''}`;
@@ -467,6 +453,8 @@ function calRange() {
   const start = new Date(lo.getFullYear(), lo.getMonth(), 1 - lo.getDay());
   return { start, n: Math.ceil(Math.round((hi - start) / DAY) / 7) + 1 };
 }
+// 그날의 계약 착수·완수 + (켜져 있으면) 구글 캘린더 일정
+const dayItems = (evs, ds) => [...(evs.get(ds) || []), ...(gevOn() ? gev.byDay.get(ds) || [] : [])];
 function renderCalendar() {
   const t = todayStr();
   const old = $('#calScroll');
@@ -481,7 +469,7 @@ function renderCalendar() {
   for (let w = 0; w < calWeeks.n; w++) {
     body += '<div class="cal-week">';
     for (let i = 0; i < 7; i++) {
-      const d = calDay(w * 7 + i), ds = ymd(d), arr = evs.get(ds) || [];
+      const d = calDay(w * 7 + i), ds = ymd(d), arr = dayItems(evs, ds);
       const dn = d.getDate() === 1 ? `${d.getMonth() + 1}월 1일` : d.getDate();
       const shown = arr.length > MAX ? arr.slice(0, MAX - 1) : arr;
       body += `<div class="cal-day${ds === t ? ' today' : ''}${i === 0 ? ' sun' : ''}" data-date="${ds}" data-m="${ds.slice(0, 7)}">
@@ -491,9 +479,9 @@ function renderCalendar() {
     body += '</div>';
   }
   let pop = '';
-  if (ui.calMore && evs.get(ui.calMore)) {
+  if (ui.calMore && dayItems(evs, ui.calMore).length) {
     const d = parseD(ui.calMore);
-    pop = `<div class="cal-pop" role="dialog" aria-label="${d.getMonth() + 1}월 ${d.getDate()}일 일정"><div class="cal-pop-h"><strong>${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEK[d.getDay()]})</strong><button type="button" class="icon-btn" style="width:28px;height:28px" data-cal="closeMore" aria-label="닫기">${ICON.x}</button></div><div class="cal-pop-b">${evs.get(ui.calMore).map(calChip).join('')}</div></div>`;
+    pop = `<div class="cal-pop" role="dialog" aria-label="${d.getMonth() + 1}월 ${d.getDate()}일 일정"><div class="cal-pop-h"><strong>${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEK[d.getDay()]})</strong><button type="button" class="icon-btn" style="width:28px;height:28px" data-cal="closeMore" aria-label="닫기">${ICON.x}</button></div><div class="cal-pop-b">${dayItems(evs, ui.calMore).map(calChip).join('')}</div></div>`;
   }
   $('#calendarView').innerHTML = `<div class="cal">
     <div class="cal-bar">
@@ -504,7 +492,7 @@ function renderCalendar() {
         <button type="button" class="icon-btn" data-cal="next" aria-label="다음 달"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
       </div>
       <span class="muted cal-sum" id="calSum"></span>
-      ${cfg.hasGcal ? `<span class="cal-gc" title="등록한 계약은 구글 캘린더 '업무'에도 같은 일정이 있습니다">${gcalBadge()}</span>` : ''}
+      ${cfg.hasGcal ? `<label class="check cal-gtog"><input type="checkbox" id="gevOn"${gev.on ? ' checked' : ''}>구글 일정 같이 보기</label>${gev.on && gev.err ? `<span class="gc-err cal-gerr" title="${esc(gev.err)}">구글 일정 못 불러옴 — ${esc(gev.err)}</span>` : ''}<span class="cal-gc" title="등록한 계약은 구글 캘린더 '업무'에도 같은 일정이 있습니다">${gcalBadge()}</span>` : ''}
     </div>
     <div class="cal-wds">${WEEK.map((w, i) => `<div class="cal-wd${i === 0 ? ' sun' : ''}">${w}</div>`).join('')}</div>
     <div class="cal-scroll" id="calScroll"><div class="cal-body">${body}${pop}</div></div>
@@ -536,6 +524,7 @@ function calSync(force) {
   const tally = {};
   for (let w = first; w <= last; w++) for (let i = 0; i < 7; i++) { const k = ymOf(calDay(w * 7 + i)); tally[k] = (tally[k] || 0) + 1; }
   const cur = Object.keys(tally).sort().reduce((a, b) => (tally[b] > tally[a] ? b : a));
+  gevEnsure(cur);
   if (cur === ui.calMonth && !force) return;
   ui.calMonth = cur;
   const [y, m] = cur.split('-').map(Number), c = calCounts[cur] || { s: 0, e: 0 };
@@ -611,7 +600,7 @@ function renderDetail() {
       <button type="button" class="icon-btn" data-act="close" aria-label="상세 닫기 (Esc)">${ICON.x}</button>
     </div>
     <div class="d-body">
-      ${x._ai ? `<div class="ai-banner"><strong>Claude가 문서에서 채운 계약입니다</strong>${x._ai.review && x._ai.review.length ? `<ul>${x._ai.review.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : '<span>입력값을 한 번 확인해 주세요.</span>'}${cfg.hasGcal ? '<label class="check gc-check"><input type="checkbox" id="aiGcal" checked>확인 완료 시 구글 캘린더 \'업무\'에 착수·완수 일정 추가</label>' : ''}<div class="row"><button type="button" class="btn sm primary" data-act="aiOk">확인 완료</button><button type="button" class="btn sm" data-act="aiCancel">추가 취소</button></div></div>` : ''}
+      ${x._ai ? `<div class="ai-banner"><strong>Claude가 문서에서 채운 계약입니다</strong>${x._ai.review && x._ai.review.length ? `<ul>${x._ai.review.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : '<span>입력값을 한 번 확인해 주세요.</span>'}${cfg.hasGcal ? '<label class="check gc-check"><input type="checkbox" id="aiGcal" checked>확인 완료 시 구글 캘린더 \'업무\'에 착수·완수 일정 추가</label>' : ''}${(pendingDocs.get(x.id) || []).length ? `<label class="check gc-check"><input type="checkbox" id="aiDocs" checked>넣은 문서 ${pendingDocs.get(x.id).length}개를 계약 문서에 보관</label>` : ''}<div class="row"><button type="button" class="btn sm primary" data-act="aiOk">확인 완료</button><button type="button" class="btn sm" data-act="aiCancel">추가 취소</button></div></div>` : ''}
       <div class="grid2">
         <label class="fld">학교<select data-k="school">${opt(data.options.schools, x.school)}</select></label>
         <label class="fld">항목<select data-k="category">${opt(data.options.categories, x.category)}</select></label>
@@ -642,6 +631,8 @@ function renderDetail() {
       <label class="fld">연락처·담당<textarea data-k="contact" rows="2">${esc(x.contact)}</textarea></label>
       ${sub}
       <label class="fld">특이사항<textarea data-k="note" rows="5">${esc(x.note)}</textarea></label>
+      ${x._ai ? '' : docsHtml(x)}
+      ${histHtml(x)}
       <div class="d-actions">
         <button type="button" class="btn sm" data-act="dup">${ICON.copy}복제</button>
         <button type="button" class="btn sm" data-act="aiUpdate">${ICON.doc}문서로 갱신</button>
@@ -651,6 +642,7 @@ function renderDetail() {
       <div class="meta">${x.updatedAt ? '최종 수정 ' + new Date(x.updatedAt).toLocaleString('ko-KR') : '노션에서 가져온 원본'}${x._nEdited ? ' · 노션 반영 ' + new Date(x._nEdited).toLocaleString('ko-KR') : (x.id.startsWith('l') ? ' · 노션에 아직 없음' : '')}</div>
     </div>`;
   autoGrow();
+  loadDocs(x);
 }
 function autoGrow() { $$('#detail textarea').forEach((t) => { t.style.height = 'auto'; t.style.height = Math.min(320, t.scrollHeight + 2) + 'px'; }); }
 
@@ -736,6 +728,7 @@ function onField(e, final) {
     // 비즈노넷 칸은 화면에서 뺐으므로 계약자를 고치면 항상 따라 맞춘다(노션 링크용)
     if (k === 'contractor' && final) { x.bizno = deriveBizno(v); x._biznoAuto = true; }
   }
+  if (final && !x._ai) recordFieldChange(x, k);
   touch(x);
   reindex();
   scheduleSave();
@@ -805,6 +798,9 @@ async function openSettings(focus) {
         </ol>`}
         <label class="fld">웹 앱 URL<input id="sGcal" type="password" autocomplete="off" placeholder="${st.hasGcal ? '저장됨 ' + esc(st.gcalUrlMasked) + ' — 바꿀 때만 입력' : 'https://script.google.com/macros/s/…/exec'}"></label>
         <label class="fld">캘린더 ID <span class="hint">구글 캘린더 › 캘린더 설정 › 캘린더 통합의 '캘린더 ID' · 비우면 기본 캘린더</span><input id="sGcalCal" value="${esc(st.gcalCalendar || '')}"></label>
+        ${st.hasGcal ? `<div class="fld">캘린더 화면에 같이 볼 캘린더 <span class="hint">회의 등 다른 일정을 계약 일정과 함께 표시 · 고르지 않으면 위 캘린더만</span>
+          <div id="gcalCals" class="cal-pick"><button type="button" class="btn sm" data-m="gcalCals">캘린더 목록 불러오기</button>${(st.gcalShow || []).length ? `<span class="hint">지금 ${st.gcalShow.length}개 선택됨</span>` : ''}</div></div>
+        <p class="hint" style="margin:0">'같이 보기'는 연결 스크립트 2판부터 됩니다. 예전에 배포했다면 <b>연결 스크립트 복사</b> → 스크립트 편집기에 붙여넣고 저장 → <b>배포 › 배포 관리 › 수정(연필) › 버전: 새 버전 › 배포</b> (주소는 그대로).</p>` : ''}
         ${st.hasGcal ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
           <button type="button" class="btn sm" data-m="gcalLink">기존 일정 연결</button>
           <button type="button" class="btn sm" data-m="gcalCopy">연결 스크립트 복사</button>
@@ -857,7 +853,7 @@ async function openSettings(focus) {
       try {
         const r = await (await fetch('api/net-test')).json();
         const line = (n, x) => `<span class="${x.ok ? 'ok' : 'bad'}">${n} ${x.ok ? '연결됨' : '— ' + esc(x.msg)}</span>`;
-        let html = line('Claude API', r.anthropic) + line('노션', r.notion) + (r.gcal ? line(`구글 캘린더${r.gcal.name ? ` '${r.gcal.name}'` : ''}`, r.gcal) : '');
+        let html = line('Claude API', r.anthropic) + line('노션', r.notion) + (r.gcal ? line(`구글 캘린더${r.gcal.name ? ` '${r.gcal.name}'` : ''}`, r.gcal) + (r.gcal.ok && !(r.gcal.version >= 2) ? '<span class="bad">연결 스크립트가 예전 판입니다 — 같이 보기를 쓰려면 새로 복사해 새 버전으로 배포하세요</span>' : '') : '');
         if (r.notion.ok && cfg.hasNotionToken) {
           const t = await fetch('api/notion/test');
           html += t.ok ? `<span class="ok">DB '${esc((await t.json()).title)}' 접근 가능</span>` : `<span class="bad">${esc(await t.text())}</span>`;
@@ -878,6 +874,18 @@ async function openSettings(focus) {
       } catch (e) { out.textContent = '복사 실패: ' + (e.message || e); }
     },
     gcalLink: async () => { await saveSettingsForm(); gcalLinkExisting($('#gcalOut')); },
+    gcalCals: async () => {
+      const box = $('#gcalCals');
+      box.innerHTML = '<span><span class="spin"></span> 불러오는 중…</span>';
+      try {
+        const r = await fetch('api/gcal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'calendars' }) });
+        if (!r.ok) throw new Error(await r.text());
+        const cals = (await r.json()).calendars;
+        if (!Array.isArray(cals)) throw new Error('연결 스크립트를 새 버전으로 바꿔야 목록을 볼 수 있습니다 (아래 안내 참고)');
+        const chosen = (st.gcalShow || []).length ? st.gcalShow : [st.gcalCalendar];
+        box.innerHTML = cals.map((c) => `<label class="check"><input type="checkbox" data-gshow value="${esc(c.id)}"${chosen.includes(c.id) ? ' checked' : ''}><span class="dot" style="background:${esc(c.color)}"></span>${esc(c.name)}</label>`).join('') + '<span class="hint">고른 뒤 설정 저장</span>';
+      } catch (e) { box.innerHTML = `<span class="gc-err">${esc(e.message || e)}</span>`; }
+    },
     folder: () => fetch('api/open-folder'), bfolder: () => fetch('api/open-folder?which=backup'), efolder: () => fetch('api/open-folder?which=export'),
     restore: async () => {
       const r = $('input[name=bk]:checked'); if (!r) return;
@@ -899,7 +907,9 @@ async function saveSettingsForm() {
   if ($('#sNotion').value.trim()) o.notionToken = $('#sNotion').value.trim();
   if ($('#sGcal').value.trim()) o.gcalUrl = $('#sGcal').value.trim();
   o.gcalCalendar = $('#sGcalCal').value.trim();
+  if ($$('[data-gshow]').length) o.gcalShow = $$('[data-gshow]').filter((c) => c.checked).map((c) => c.value);
   await postSettings(o);
+  gevReset(); // 같이 볼 캘린더가 바뀌었을 수 있으니 다시 받기
   gcalSchedule(800);
 }
 let cfg = {};
@@ -999,30 +1009,128 @@ async function runAI(mode, cur) {
   f.parentId = f.parentId && byId.has(f.parentId) ? f.parentId : null;
   const review = [...(f.review || []), ...(res.notes || [])];
   delete f.review;
-  if (mode === 'update' && cur) return showDiff(cur, f, review);
+  const files = aiFiles.slice(); // 확인하면 계약 문서로 보관
+  if (mode === 'update' && cur) return showDiff(cur, f, review, files);
   closeModal();
   const item = blank({ ...f, bizno: deriveBizno(f.contractor), _biznoAuto: true, _ai: { review, at: new Date().toISOString() } });
   if (item.parentId) ui.expanded.add(item.parentId);
+  if (files.length) pendingDocs.set(item.id, files);
   addItem(item);
   toast('Claude가 입력칸을 채웠습니다 — 내용 확인 후 "확인 완료"를 눌러 주세요');
 }
-function showDiff(cur, f, review) {
+function showDiff(cur, f, review, files) {
+  files = files || [];
   const keys = Object.keys(FIELD_LABEL).filter((k) => f[k] !== undefined && String(f[k] ?? '') !== String(cur[k] ?? ''));
   const show = (k, v) => k === 'amount' ? fmt(v) : k === 'parentId' ? (byId.get(v)?.title || '없음') : esc(v || '—');
   modal(`<div class="m-head"><h2 id="modalTitle">바뀐 내용 확인</h2><button type="button" class="icon-btn" data-m="cancel" aria-label="닫기">${ICON.x}</button></div>
     <div class="m-body">
       ${review.length ? `<div class="ai-banner"><strong>확인할 점</strong><ul>${review.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></div>` : ''}
       ${keys.length ? `<div class="diff">${keys.map((k) => `<label class="drow"><input type="checkbox" data-dk="${k}" checked><span class="dk">${FIELD_LABEL[k]}</span><span class="dv"><del>${show(k, cur[k])}</del><ins>${show(k, f[k])}</ins></span></label>`).join('')}</div>` : '<p>문서 내용이 지금 대장과 같습니다. 바꿀 칸이 없습니다.</p>'}
+      ${files.length ? `<label class="check" style="margin:0"><input type="checkbox" id="diffDocs" checked>넣은 문서 ${files.length}개를 계약 문서에 보관</label>` : ''}
     </div>
-    <div class="m-foot"><button type="button" class="btn" data-m="cancel">닫기</button>${keys.length ? '<button type="button" class="btn primary" data-m="ok">선택한 칸 적용</button>' : ''}</div>`,
+    <div class="m-foot"><button type="button" class="btn" data-m="cancel">닫기</button>${keys.length ? '<button type="button" class="btn primary" data-m="ok">선택한 칸 적용</button>' : files.length ? '<button type="button" class="btn primary" data-m="ok">문서만 보관</button>' : ''}</div>`,
   { ok: () => {
     const sel = $$('[data-dk]').filter((c) => c.checked).map((c) => c.dataset.dk);
+    const keepDocs = files.length > 0 && (!$('#diffDocs') || $('#diffDocs').checked);
+    const changes = sel.map((k) => ({ k, from: cur[k], to: f[k] }));
     const confirmBizno = true; // 계약자가 바뀌면 비즈노넷 표기도 새 계약자 기준으로
     for (const k of sel) cur[k] = f[k];
     if (sel.includes('contractor') && (!cur.bizno || cur._biznoAuto || confirmBizno)) { cur.bizno = deriveBizno(cur.contractor); cur._biznoAuto = true; }
-    touch(cur); reindex(); closeModal(); render(); scheduleSave();
-    toast(`${sel.length}개 칸을 반영했습니다`);
+    addHistory(cur, '문서로 갱신', changes, keepDocs ? files.map((fl) => fl.name) : []);
+    if (sel.length) touch(cur);
+    reindex(); closeModal(); render(); scheduleSave();
+    if (keepDocs) uploadDocs(cur, files);
+    if (sel.length) toast(`${sel.length}개 칸을 반영했습니다`);
   } });
+}
+
+// ---------- 변경 이력 ----------
+// x.history = [{ at, source: '문서로 갱신'|'직접 수정'|'문서로 추가', changes: [{k, from, to}], files: [이름] }]
+const HIST_KEYS = ['name', 'no', 'amount', 'contractDate', 'startDate', 'endDate', 'contractor'];
+const same = (a, b) => String(a ?? '') === String(b ?? '');
+function addHistory(x, source, changes, files) {
+  changes = changes.filter((c) => !same(c.from, c.to));
+  if (!changes.length && !(files && files.length) && source !== '문서로 추가') return;
+  const h = x.history || (x.history = []);
+  const last = h[h.length - 1], now = new Date();
+  // 직접 고친 건 10분 안이면 한 기록으로 묶는다
+  if (source === '직접 수정' && last && last.source === source && now - new Date(last.at) < 600000) {
+    for (const c of changes) { const o = last.changes.find((z) => z.k === c.k); if (o) o.to = c.to; else last.changes.push(c); }
+    last.changes = last.changes.filter((c) => !same(c.from, c.to));
+    last.at = now.toISOString();
+    if (!last.changes.length) h.pop();
+    return;
+  }
+  h.push({ at: now.toISOString(), source, changes, files: files || [] });
+}
+function histVal(k, v) {
+  if (k === 'amount') return v ? fmt(v) : '—';
+  if (k === 'parentId') return (v && byId.get(v)?.title) || '없음';
+  return v ? String(v) : '—';
+}
+function histHtml(x) {
+  const h = x.history || [];
+  if (!h.length) return '';
+  const items = h.map((e, i) => [e, i]).reverse().map(([e, i]) => {
+    const ch = e.changes.map((c) => {
+      const df = c.k === 'amount' && c.from && c.to ? c.to - c.from : 0;
+      return `<li><span class="hk">${FIELD_LABEL[c.k] || c.k}</span><span class="hv"><del>${esc(histVal(c.k, c.from))}</del> → <ins>${esc(histVal(c.k, c.to))}</ins>${df ? ` <span class="muted">(${df > 0 ? '+' : ''}${fmt(df)})</span>` : ''}</span></li>`;
+    }).join('');
+    const files = e.files && e.files.length ? `<div class="hf">${ICON.doc}<span>${e.files.map(esc).join(', ')}</span></div>` : '';
+    return `<div class="h-item"><div class="h-top"><b>${new Date(e.at).toLocaleDateString('ko-KR')}</b><span class="h-src">${esc(e.source)}</span><span class="sp"></span><button type="button" class="h-del" data-hdel="${i}" aria-label="이 기록 지우기" title="이 기록 지우기">${ICON.x}</button></div>${ch ? `<ul>${ch}</ul>` : e.source === '문서로 추가' ? '<div class="muted">문서로 새로 등록</div>' : ''}${files}</div>`;
+  }).join('');
+  return `<div class="sec"><div class="sec-h"><span>변경 이력 ${h.length}건</span></div><div class="hist">${items}</div></div>`;
+}
+let fieldStart = null; // 직접 고치기 시작할 때의 값
+function noteFieldStart(e) {
+  const f = e.target.closest('[data-k]'), x = ui.sel && byId.get(ui.sel);
+  if (f && x && HIST_KEYS.includes(f.dataset.k)) fieldStart = { id: x.id, k: f.dataset.k, v: x[f.dataset.k] };
+}
+function recordFieldChange(x, k) {
+  if (!fieldStart || fieldStart.id !== x.id || fieldStart.k !== k || same(fieldStart.v, x[k])) return;
+  addHistory(x, '직접 수정', [{ k, from: fieldStart.v, to: x[k] }]);
+  fieldStart.v = x[k];
+}
+
+// ---------- 계약 문서 보관 ----------
+// 파일은 데이터 폴더의 문서\학교\요약명 폴더에, 계약에는 그 상대 경로(x.docDir)만
+const docCache = new Map(), pendingDocs = new Map(); // docDir → 파일 목록, 계약 id → 확인 전 문서
+function docsHtml(x) {
+  return `<div class="sec doc-box" data-docdrop><div class="sec-h"><span>계약 문서</span><span class="row-btns"><button type="button" class="btn sm ghost" data-act="docAdd">${ICON.plus}파일 추가</button>${x.docDir ? '<button type="button" class="btn sm ghost" data-act="docFolder">폴더 열기</button>' : ''}</span></div>
+    <div class="doc-list" id="docList">${docListHtml(x)}</div><input type="file" id="docInput" multiple class="sr" tabindex="-1" aria-hidden="true"></div>`;
+}
+function docListHtml(x) {
+  if (!x.docDir) return '<div class="doc-empty">보관한 문서가 없습니다. 파일을 여기로 끌어 놓거나 \'파일 추가\'를 누르세요.</div>';
+  const files = docCache.get(x.docDir);
+  if (!files) return '<div class="doc-empty"><span class="spin"></span> 불러오는 중…</div>';
+  if (!files.length) return '<div class="doc-empty">폴더가 비어 있습니다.</div>';
+  return files.map((f) => `<button type="button" class="doc" data-docopen="${esc(f.name)}" title="${esc(f.name)} 열기">${ICON.doc}<span class="dn">${esc(f.name)}</span><span class="muted">${f.size >= 1048576 ? (f.size / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(f.size / 1024)) + 'KB'} · ${new Date(f.modified).toLocaleDateString('ko-KR')}</span></button>`).join('');
+}
+async function loadDocs(x, force) {
+  if (!x || !x.docDir || (docCache.has(x.docDir) && !force)) return;
+  try {
+    const r = await fetch('api/docs/list?dir=' + encodeURIComponent(x.docDir));
+    if (!r.ok) throw new Error(await r.text());
+    docCache.set(x.docDir, (await r.json()).files || []);
+  } catch (e) { docCache.set(x.docDir, []); }
+  const el = ui.sel === x.id && $('#docList');
+  if (el) el.innerHTML = docListHtml(x);
+}
+async function uploadDocs(x, files) {
+  if (!files || !files.length) return [];
+  const fd = new FormData();
+  [...files].forEach((f) => fd.append('files', f, f.name));
+  fd.append('dir', x.docDir || ''); fd.append('school', x.school || ''); fd.append('title', x.title || x.name || '계약');
+  try {
+    const r = await fetch('api/docs/upload', { method: 'POST', body: fd });
+    if (!r.ok) throw new Error(await r.text());
+    const res = await r.json();
+    if (x.docDir !== res.dir) { x.docDir = res.dir; saveQuiet(); }
+    docCache.set(res.dir, res.files || []);
+    if (ui.sel === x.id) renderDetail();
+    toast(`문서 ${(res.saved || []).length}개를 보관했습니다`);
+    return res.saved || [];
+  } catch (e) { toast('문서 보관 실패: ' + (e.message || e)); return []; }
 }
 
 // ---------- 구글 캘린더 ('업무') ----------
@@ -1234,15 +1342,16 @@ if (darkMQ) darkMQ.addEventListener('change', () => { if (themeMode() === 'syste
 
 // ---------- 환경설정 기억 ----------
 function savePrefs() {
-  try { localStorage.setItem('dm-prefs', JSON.stringify({ view: ui.view, school: ui.school, expandAll: ui.expandAll, activeOnly: ui.activeOnly, expanded: [...ui.expanded], colW: ui.colW })); } catch (e) { /* 무시 */ }
+  try { localStorage.setItem('dm-prefs', JSON.stringify({ view: ui.view, school: ui.school, expandAll: ui.expandAll, activeOnly: ui.activeOnly, expanded: [...ui.expanded], colW: ui.colW, gevOn: gev.on })); } catch (e) { /* 무시 */ }
 }
 function loadPrefs() {
   try {
     const p = JSON.parse(localStorage.getItem('dm-prefs') || '{}');
-    if (p.view) ui.view = p.view; if (p.school) ui.school = p.school;
+    if (p.view === 'list' || p.view === 'calendar') ui.view = p.view; // 기간 타임라인은 없앰 if (p.school) ui.school = p.school;
     ui.expandAll = !!p.expandAll; if (p.activeOnly === false) ui.activeOnly = false;
     if (Array.isArray(p.expanded)) ui.expanded = new Set(p.expanded);
     if (p.colW && typeof p.colW === 'object') ui.colW = p.colW;
+    if (p.gevOn === false) gev.on = false;
   } catch (e) { /* 무시 */ }
 }
 
@@ -1261,8 +1370,8 @@ function normalize(d) {
 function bind() {
   document.addEventListener('click', (e) => {
     const t = e.target;
-    const v = t.closest('[data-view]'); if (v) { ui.view = v.dataset.view; delete $('#timelineView').dataset.scrolled; render(); return; }
-    const s = t.closest('[data-school]'); if (s) { ui.school = s.dataset.school; ui.kpi = null; delete $('#timelineView').dataset.scrolled; render(); return; }
+    const v = t.closest('[data-view]'); if (v) { ui.view = v.dataset.view; render(); return; }
+    const s = t.closest('[data-school]'); if (s) { ui.school = s.dataset.school; ui.kpi = null; render(); return; }
     const st = t.closest('[data-status]'); if (st) { ui.status = st.dataset.status; render(); return; }
     const k = t.closest('[data-kpi]'); if (k) { ui.kpi = ui.kpi === k.dataset.kpi ? null : k.dataset.kpi; if (ui.kpi) ui.status = '전체'; render(); return; }
     const so = t.closest('[data-sort]');
@@ -1271,11 +1380,21 @@ function bind() {
     if (tg) { const id = tg.dataset.tog; if (ui.expandAll) { ui.expandAll = false; data.items.filter((x) => kids.has(x.id)).forEach((x) => ui.expanded.add(x.id)); } ui.expanded.has(id) ? ui.expanded.delete(id) : ui.expanded.add(id); render(); return; }
     const go = t.closest('[data-goto]'); if (go) { select(go.dataset.goto, true); return; }
     const cpb = t.closest('[data-cp]'); if (cpb) { copyCell(cpb); return; } // 행 선택보다 먼저
+    const dop = t.closest('[data-docopen]');
+    if (dop) { const x = byId.get(ui.sel); if (x && x.docDir) fetch(`api/docs/open?dir=${encodeURIComponent(x.docDir)}&name=${encodeURIComponent(dop.dataset.docopen)}`).then((r) => { if (!r.ok) r.text().then((m) => { toast(m); loadDocs(x, true); }); }); return; }
+    const hd = t.closest('[data-hdel]');
+    if (hd) {
+      const x = byId.get(ui.sel); if (!x || !x.history) return;
+      const i = Number(hd.dataset.hdel), gone = x.history.splice(i, 1)[0];
+      saveQuiet(); renderDetail();
+      toast('변경 이력 1건을 지웠습니다', '되돌리기', () => { x.history.splice(i, 0, gone); saveQuiet(); renderDetail(); });
+      return;
+    }
     const th_ = t.closest('[data-theme-set]'); if (th_) { applyTheme(th_.dataset.themeSet); return; }
     const cal = t.closest('[data-cal]');
     if (cal) { const c = cal.dataset.cal; if (c === 'prev') calMove(-1); else if (c === 'next') calMove(1); else if (c === 'today') calGoto(todayStr().slice(0, 7), true); else { ui.calMore = null; const p = $('#calendarView .cal-pop'); if (p) p.remove(); } return; }
     const more = t.closest('[data-more]'); if (more) { ui.calMore = more.dataset.more; renderCalendar(); return; }
-    const row = t.closest('tr.row,[data-id].tl-bar,.tl-lab[data-id],.cal-ev[data-id]'); if (row) { select(row.dataset.id); return; }
+    const row = t.closest('tr.row,.cal-ev[data-id]'); if (row) { select(row.dataset.id); return; }
     if (ui.calMore && !t.closest('.cal-pop')) { ui.calMore = null; renderCalendar(); }
     const a = t.closest('[data-act]');
     if (a) {
@@ -1286,9 +1405,18 @@ function bind() {
       if (act === 'dup' && x) addItem(blank({ ...x, id: newId(), title: x.title + ' (사본)', updatedAt: null, _snap: undefined, _nEdited: undefined, gcal: { on: x.gcal ? !!x.gcal.on : true } }));
       if (act === 'del' && x) removeItem(x);
       if (act === 'addPhase' && x) addPhase(x);
-      if (act === 'aiOk' && x) { const c = $('#aiGcal'); x.gcal = { on: c ? c.checked : true }; delete x._ai; scheduleSave(); render(); }
+      if (act === 'aiOk' && x) {
+        const c = $('#aiGcal'), files = pendingDocs.get(x.id) || [], keep = !$('#aiDocs') || $('#aiDocs').checked;
+        pendingDocs.delete(x.id);
+        x.gcal = { on: c ? c.checked : true }; delete x._ai;
+        addHistory(x, '문서로 추가', [], keep ? files.map((f) => f.name) : []);
+        scheduleSave(); render();
+        if (keep && files.length) uploadDocs(x, files);
+      }
+      if (act === 'docAdd') { const i = $('#docInput'); if (i) i.click(); }
+      if (act === 'docFolder' && x && x.docDir) fetch('api/docs/open?dir=' + encodeURIComponent(x.docDir));
       if (act === 'gcalSetup') openSettings('#secGcal');
-      if (act === 'aiCancel' && x) { data.items = data.items.filter((i) => i.id !== x.id); reindex(); ui.sel = null; render(); scheduleSave(); toast('추가를 취소했습니다'); }
+      if (act === 'aiCancel' && x) { pendingDocs.delete(x.id); data.items = data.items.filter((i) => i.id !== x.id); reindex(); ui.sel = null; render(); scheduleSave(); toast('추가를 취소했습니다'); }
       if (act === 'aiUpdate' && x) openAIModal('update');
       if (act === 'sync') syncNow(false);
       if (act === 'notionSetup') openSettings('#secNotion');
@@ -1301,7 +1429,18 @@ function bind() {
     if (t === $('#modalBack')) closeModal();
   });
   $('#detail').addEventListener('input', (e) => { if (!syncing) onField(e, false); });
+  $('#detail').addEventListener('focusin', noteFieldStart);
+  document.addEventListener('change', (e) => {
+    if (e.target.id !== 'gevOn') return;
+    gev.on = e.target.checked; savePrefs(); renderCalendar();
+  });
   $('#detail').addEventListener('change', (e) => {
+    if (e.target.id === 'docInput') {
+      const x = byId.get(ui.sel), files = [...e.target.files];
+      e.target.value = '';
+      if (x && files.length) uploadDocs(x, files);
+      return;
+    }
     if (e.target.matches('[data-gcal]')) {
       const x = byId.get(ui.sel); if (!x) return;
       x.gcal = Object.assign({}, x.gcal, { on: e.target.checked });
@@ -1323,11 +1462,22 @@ function bind() {
   let dragN = 0;
   const hasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
   window.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragN++; if ($('#modalBack').hidden) document.body.classList.add('dragging'); });
-  window.addEventListener('dragleave', () => { if (--dragN <= 0) { dragN = 0; document.body.classList.remove('dragging'); } });
-  window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener('dragleave', () => { if (--dragN <= 0) { dragN = 0; document.body.classList.remove('dragging'); $$('.doc-box').forEach((b) => b.classList.remove('over')); } });
+  // 상세 패널의 '계약 문서' 칸 위에서는 새 계약 추가 대신 그 계약의 문서로 보관
+  const docBoxAt = (e) => e.target && e.target.closest && e.target.closest('[data-docdrop]');
+  window.addEventListener('dragover', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    const box = docBoxAt(e);
+    $$('.doc-box').forEach((b) => b.classList.toggle('over', b === box));
+    document.body.classList.toggle('dragging', !box && $('#modalBack').hidden);
+  });
   window.addEventListener('drop', (e) => {
     e.preventDefault(); dragN = 0; document.body.classList.remove('dragging');
+    $$('.doc-box').forEach((b) => b.classList.remove('over'));
     if (!hasFiles(e) || !$('#modalBack').hidden) return;
+    const x = docBoxAt(e) && byId.get(ui.sel);
+    if (x) { uploadDocs(x, [...e.dataTransfer.files]); return; }
     openAIModal('new', e.dataTransfer.files);
   });
   $('#btnExport').addEventListener('click', exportXlsx);

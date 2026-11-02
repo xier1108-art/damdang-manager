@@ -83,6 +83,9 @@ func main() {
 		setWindowTheme(r.URL.Query().Get("dark") == "1")
 		w.Write([]byte("ok"))
 	})
+	mux.HandleFunc("/api/docs/upload", handleDocsUpload)
+	mux.HandleFunc("/api/docs/list", handleDocsList)
+	mux.HandleFunc("/api/docs/open", handleDocsOpen)
 	mux.HandleFunc("/api/show", func(w http.ResponseWriter, r *http.Request) {
 		showMainWindow()
 		w.Write([]byte("ok"))
@@ -94,7 +97,7 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 	mux.HandleFunc("/api/info", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]any{"dataDir": dataDir, "dataFile": filepath.Join(dataDir, dataName), "version": "1.5.0"})
+		writeJSON(w, map[string]any{"dataDir": dataDir, "dataFile": filepath.Join(dataDir, dataName), "version": "1.6.0"})
 	})
 	go http.Serve(ln, mux)
 

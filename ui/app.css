@@ -540,3 +540,10 @@ button.cal-ev.cal-g{cursor:pointer;border:0;font:inherit;font-size:12px;text-ali
 .ce-foot{display:flex;align-items:center;gap:8px}
 .ce-foot .sp{flex:1}
 .ce-foot .hint{font-size:12px}
+
+/* 1.8.1 — 일정 오른쪽 클릭 메뉴 */
+.cal-menu{position:fixed;z-index:80;min-width:150px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 12px 32px rgba(16,24,40,.2);padding:4px;display:flex;flex-direction:column}
+:root[data-theme=dark] .cal-menu{box-shadow:0 16px 40px rgba(0,0,0,.55)}
+.cal-menu button{border:0;background:none;text-align:left;padding:8px 10px;border-radius:6px;font:inherit;font-size:13px;color:var(--ink);cursor:pointer}
+.cal-menu button:hover,.cal-menu button:focus-visible{background:var(--hover);outline:0}
+.cal-menu button.danger{color:var(--bad-ink)}

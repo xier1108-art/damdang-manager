@@ -614,7 +614,7 @@ function calEditorHtml() {
   const dis = ro ? ' disabled' : '';
   return `<div class="cal-ed" role="dialog" aria-label="${isNew ? '새 일정' : '일정 편집'}">
     <div class="ce-h"><span class="ce-dot" style="background:${esc(dot)}"></span><strong>${isNew ? '새 일정' : '일정'}</strong><span class="sp"></span>
-      ${!isNew && !ro ? `<button type="button" class="btn sm ghost danger" data-ce="del">${ICON.trash}삭제</button>` : ''}
+      ${!isNew && !ro ? `<button type="button" class="btn sm ghost" data-ce="dup" title="같은 날에 사본 만들기">${ICON.copy}복제</button><button type="button" class="btn sm ghost danger" data-ce="del">${ICON.trash}삭제</button>` : ''}
       <button type="button" class="icon-btn" style="width:28px;height:28px" data-ce="close" aria-label="닫기">${ICON.x}</button></div>
     <input class="ce-title" id="ceTitle" value="${esc(ev.title)}" placeholder="제목"${dis} aria-label="제목">
     <label class="check ce-all"><input type="checkbox" id="ceAll"${ev.allDay ? ' checked' : ''}${dis}>종일</label>
@@ -645,7 +645,7 @@ function placeCalEditor() {
   ed.style.top = Math.max(sc.scrollTop + 8, Math.min(sc.scrollTop + sc.clientHeight - ed.offsetHeight - 8, top)) + 'px';
 }
 function openCalEditor(ce) {
-  ui.calEdit = ce; ui.calMore = null;
+  ui.calEdit = ce; ui.calMore = null; closeCalMenu();
   if (cfg.hasGcal && gcals === null) loadGcals();
   renderCalendar();
   setTimeout(() => { const t = $('#ceTitle'); if (t && !t.disabled && !ce.ev) t.focus(); }, 30);
@@ -672,16 +672,51 @@ async function saveCalEditor() {
     toast(ce.ev ? '일정을 고쳤습니다 — 구글 캘린더에도 반영됨' : '새 일정을 만들었습니다 — 구글 캘린더에도 반영됨');
   } catch (e) { btn.disabled = false; $('#ceMsg').innerHTML = `<span class="gc-err">${esc(e.message || e)}</span>`; }
 }
-async function deleteCalEditor(btn) {
-  const ev = ui.calEdit && ui.calEdit.ev; if (!ev) return;
-  if (!btn.classList.contains('confirm')) { btn.classList.add('confirm'); btn.innerHTML = `${ICON.trash}한 번 더 누르면 삭제`; return; }
-  btn.disabled = true;
-  try {
-    const r = await fetch('api/gcal', { method: 'POST', body: JSON.stringify({ action: 'evDelete', calId: ev.calId, eid: ev.eid }) });
-    if (!r.ok) throw new Error(await r.text());
-    ui.calEdit = null; gevReset(); renderCalendar();
-    toast(`'${ev.title}' 일정을 지웠습니다 — 구글 캘린더에서도 삭제됨`);
-  } catch (e) { btn.disabled = false; $('#ceMsg').innerHTML = `<span class="gc-err">${esc(e.message || e)}</span>`; }
+// 노션 캘린더처럼 바로 지우고, 알림에서 되돌릴 수 있게 (되돌리면 같은 내용으로 다시 만든다)
+async function gevDelete(ev) {
+  closeCalEditor(); closeCalMenu();
+  const r = await fetch('api/gcal', { method: 'POST', body: JSON.stringify({ action: 'evDelete', calId: ev.calId, eid: ev.eid }) });
+  if (!r.ok) { toast('지우지 못했습니다: ' + (await r.text())); return; }
+  gevReset(); renderCalendar();
+  toast(`'${ev.title}' 일정을 지웠습니다 — 구글 캘린더에서도 삭제됨`, '되돌리기', async () => {
+    try { await gevSave(Object.assign({}, ev, { eid: '' }), { target: ev.calId }); gevReset(); renderCalendar(); toast('일정을 되살렸습니다'); }
+    catch (e) { toast('되살리지 못했습니다: ' + (e.message || e)); }
+  });
+}
+async function gevDuplicate(ev) {
+  closeCalEditor(); closeCalMenu();
+  try { await gevSave(Object.assign({}, ev, { eid: '' }), { target: ev.calId }); gevReset(); renderCalendar(); toast(`'${ev.title}' 일정을 복제했습니다`); }
+  catch (e) { toast('복제하지 못했습니다: ' + (e.message || e)); }
+}
+function deleteCalEditor() { const ev = ui.calEdit && ui.calEdit.ev; if (ev) gevDelete(ev); }
+// 오른쪽 클릭 메뉴
+function closeCalMenu() { const m = $('#calMenu'); if (m) m.remove(); }
+function openCalMenu(e, chip) {
+  closeCalMenu();
+  let items = [];
+  if (chip.dataset.gev) {
+    const ev = gevIndex.get(chip.dataset.gev); if (!ev) return;
+    items = [['open', '열기'], ...(ev.editable ? [['dup', '복제'], ['del', '삭제', 'danger']] : [])];
+    calMenuTarget = { ev };
+  } else if (chip.dataset.id) {
+    items = [['contract', '계약 열기']];
+    calMenuTarget = { id: chip.dataset.id };
+  }
+  const m = document.createElement('div');
+  m.id = 'calMenu'; m.className = 'cal-menu'; m.setAttribute('role', 'menu');
+  m.innerHTML = items.map(([a, l, c]) => `<button type="button" role="menuitem" class="${c || ''}" data-cm="${a}">${l}</button>`).join('');
+  document.body.appendChild(m);
+  m.style.left = Math.min(window.innerWidth - m.offsetWidth - 8, e.clientX) + 'px';
+  m.style.top = Math.min(window.innerHeight - m.offsetHeight - 8, e.clientY) + 'px';
+  const first = m.querySelector('button'); if (first) first.focus();
+}
+let calMenuTarget = null;
+function runCalMenu(a) {
+  const t = calMenuTarget; closeCalMenu(); if (!t) return;
+  if (a === 'open' && t.ev) openCalEditor({ ev: Object.assign({}, t.ev) });
+  if (a === 'dup' && t.ev) gevDuplicate(t.ev);
+  if (a === 'del' && t.ev) gevDelete(t.ev);
+  if (a === 'contract' && t.id) select(t.id);
 }
 const addDays = (ds, n) => { const d = parseD(ds); return ymd(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)); };
 // 끌어 놓은 날짜로 — 계약 착수·완수일이나 구글 일정의 날짜를 바꾼다
@@ -962,8 +997,8 @@ async function openSettings(focus) {
           <span id="gcalOut" class="test-out"><span class="hint">'기존 일정 연결'은 캘린더에 이미 있는 같은 제목·날짜의 일정을 찾아 계약과 묶습니다. 새 일정은 만들지 않습니다.</span></span>
         </div>` : ''}
         <details class="g-adv">
-          <summary>기관망에서 로그인이 안 될 때 (클라이언트 보안 비밀)</summary>
-          <p class="hint" style="margin:0">로그인은 기본적으로 중계 서버를 거치는데, 기관망에서는 막혀 있을 수 있습니다. 구글 클라우드 콘솔 › Google 인증 플랫폼 › 클라이언트에서 이 앱의 <b>클라이언트 보안 비밀</b>을 복사해 넣어 두면 구글과 직접 연결합니다. 이 PC의 Windows 계정으로 암호화해 저장합니다.</p>
+          <summary>선택: 중계 서버 없이 구글과 직접 연결 (클라이언트 보안 비밀)</summary>
+          <p class="hint" style="margin:0">보통은 넣지 않아도 됩니다. 로그인은 할일정리와 같은 중계 서버를 거치는데, 그 서버에 닿지 않는 환경에서만 필요합니다. 구글 클라우드 콘솔 › Google 인증 플랫폼 › 클라이언트에서 이 앱의 <b>클라이언트 보안 비밀</b>을 복사해 넣어 두면 구글과 직접 연결합니다. 이 PC의 Windows 계정으로 암호화해 저장합니다.</p>
           <label class="fld">클라이언트 보안 비밀<input id="sGSecret" type="password" autocomplete="off" placeholder="${st.hasGoogleSecret ? '저장됨 — 바꿀 때만 입력' : 'GOCSPX-…'}"></label>
         </details>
       </section>
@@ -1563,7 +1598,9 @@ function bind() {
     const gvb = t.closest('[data-gev]');
     if (gvb) { const ev = gevIndex.get(gvb.dataset.gev); if (ev) openCalEditor({ ev: Object.assign({}, ev) }); return; }
     const ceb = t.closest('[data-ce]');
-    if (ceb) { const a = ceb.dataset.ce; if (a === 'close') closeCalEditor(); else if (a === 'save') saveCalEditor(); else if (a === 'del') deleteCalEditor(ceb); return; }
+    if (ceb) { const a = ceb.dataset.ce; if (a === 'close') closeCalEditor(); else if (a === 'save') saveCalEditor(); else if (a === 'del') deleteCalEditor(); else if (a === 'dup' && ui.calEdit && ui.calEdit.ev) gevDuplicate(ui.calEdit.ev); return; }
+    const cmb = t.closest('[data-cm]'); if (cmb) { runCalMenu(cmb.dataset.cm); return; }
+    closeCalMenu();
     if (ui.calEdit && !t.closest('.cal-ed')) closeCalEditor();
     const th_ = t.closest('[data-theme-set]'); if (th_) { applyTheme(th_.dataset.themeSet); return; }
     const cal = t.closest('[data-cal]');
@@ -1614,6 +1651,11 @@ function bind() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'ceTitle') { e.preventDefault(); saveCalEditor(); } });
   // 캘린더: 빈 곳을 두 번 누르면 새 일정, 일정을 끌어 다른 날로 옮기기
   const cv = $('#calendarView');
+  cv.addEventListener('contextmenu', (e) => {
+    const chip = e.target.closest('[data-gev],.cal-ev[data-id]'); if (!chip) return;
+    e.preventDefault(); openCalMenu(e, chip);
+  });
+  document.addEventListener('scroll', closeCalMenu, true);
   cv.addEventListener('dblclick', (e) => {
     const d = e.target.closest('.cal-day');
     if (!d || e.target.closest('.cal-ev,.cal-more,.cal-ed,.cal-pop') || !cfg.hasGcal) return;
@@ -1695,6 +1737,7 @@ function bind() {
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); clearTimeout(saveTimer); saveNow(); }
     else if (e.key === 'Escape') {
       if (!$('#modalBack').hidden) closeModal();
+      else if ($('#calMenu')) closeCalMenu();
       else if (ui.calEdit) closeCalEditor();
       else if (ui.calMore) { ui.calMore = null; renderCalendar(); }
       else if (document.activeElement === $('#q') && $('#q').value) { $('#q').value = ''; ui.q = ''; renderMain(); }

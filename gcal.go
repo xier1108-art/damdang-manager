@@ -405,9 +405,48 @@ func calendarList() ([]map[string]any, error) {
 	}
 	var cals []map[string]any
 	for _, c := range items(out) {
-		cals = append(cals, map[string]any{"id": c["id"], "name": c["summary"], "color": c["backgroundColor"]})
+		role, _ := c["accessRole"].(string)
+		prim, _ := c["primary"].(bool)
+		cals = append(cals, map[string]any{"id": c["id"], "name": c["summary"], "color": c["backgroundColor"], "editable": role == "owner" || role == "writer", "primary": prim})
 	}
 	return cals, nil
+}
+
+// 구글 일정 하나를 화면에서 쓰는 모양으로
+func eventOut(e map[string]any, cal map[string]any) map[string]any {
+	loc := kst()
+	title, _ := e["summary"].(string)
+	desc, _ := e["description"].(string)
+	eid, _ := e["id"].(string)
+	calID, _ := cal["id"].(string)
+	_, recurring := e["recurringEventId"]
+	ev := map[string]any{"id": calID + "|" + eid, "calId": calID, "eid": eid, "title": title, "desc": desc,
+		"color": cal["color"], "cal": cal["name"], "editable": cal["editable"], "recurring": recurring}
+	ev["evColor"], _ = e["colorId"].(string)
+	sd, sdt := evDate(e, "start")
+	ed, edt := evDate(e, "end")
+	if sd != "" { // 종일 일정(끝 날짜는 다음 날로 오므로 하루 뺀다)
+		end := sd
+		if t, err := time.Parse("2006-01-02", ed); err == nil {
+			end = t.AddDate(0, 0, -1).Format("2006-01-02")
+		}
+		ev["allDay"], ev["start"], ev["end"], ev["time"], ev["etime"] = true, sd, end, "", ""
+	} else {
+		st, _ := time.Parse(time.RFC3339, sdt)
+		et, _ := time.Parse(time.RFC3339, edt)
+		st, et = st.In(loc), et.In(loc)
+		ev["allDay"], ev["start"], ev["end"], ev["time"], ev["etime"] = false, st.Format("2006-01-02"), et.Format("2006-01-02"), st.Format("15:04"), et.Format("15:04")
+	}
+	return ev
+}
+
+func calMeta(id string, cals []map[string]any) map[string]any {
+	for _, c := range cals {
+		if c["id"] == id {
+			return c
+		}
+	}
+	return map[string]any{"id": id, "name": id, "color": "", "editable": true}
 }
 
 // 같이 볼 캘린더들의 일정 (프로그램이 만든 (착수)/(완수) 일정은 빼고)
@@ -426,50 +465,75 @@ func listEvents(s Settings, from, to string) ([]map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	meta := map[string]map[string]any{}
-	for _, c := range cals {
-		id, _ := c["id"].(string)
-		meta[id] = c
-	}
 	events := []map[string]any{}
 	for _, id := range ids {
-		color, name := "", id
-		if m, ok := meta[id]; ok {
-			color, _ = m["color"].(string)
-			name, _ = m["name"].(string)
-		}
 		q := url.Values{"timeMin": {tf.Format(time.RFC3339)}, "timeMax": {tt.Format(time.RFC3339)}, "singleEvents": {"true"}, "orderBy": {"startTime"}, "maxResults": {"2500"}, "timeZone": {calTZ}}
 		out, _, err := calCall("GET", calPath(id)+"/events", q, nil)
 		if err != nil {
 			continue // 볼 수 없는 캘린더는 건너뜀
 		}
+		meta := calMeta(id, cals)
 		for _, e := range items(out) {
 			title, _ := e["summary"].(string)
 			if progEvent.MatchString(title) || e["status"] == "cancelled" {
 				continue
 			}
-			sd, sdt := evDate(e, "start")
-			ed, edt := evDate(e, "end")
-			ev := map[string]any{"title": title, "color": color, "cal": name}
-			ev["evColor"], _ = e["colorId"].(string)
-			if sd != "" { // 종일 일정(끝 날짜는 다음 날로 오므로 하루 뺀다)
-				end := sd
-				if t, err := time.Parse("2006-01-02", ed); err == nil {
-					end = t.AddDate(0, 0, -1).Format("2006-01-02")
-				}
-				ev["allDay"], ev["start"], ev["end"], ev["time"] = true, sd, end, ""
-			} else {
-				st, _ := time.Parse(time.RFC3339, sdt)
-				et, _ := time.Parse(time.RFC3339, edt)
-				st, et = st.In(loc), et.In(loc)
-				ev["allDay"], ev["start"], ev["end"], ev["time"] = false, st.Format("2006-01-02"), et.Format("2006-01-02"), st.Format("15:04")
-			}
-			eid, _ := e["id"].(string)
-			ev["id"] = id + "|" + eid
-			events = append(events, ev)
+			events = append(events, eventOut(e, meta))
 		}
 	}
 	return events, nil
+}
+
+// 화면에서 고치거나 새로 만든 일정을 구글에 저장 (다른 캘린더로 옮기기 포함)
+func saveEvent(s Settings, req map[string]any) (map[string]any, error) {
+	str := func(k string) string { v, _ := req[k].(string); return strings.TrimSpace(v) }
+	cal, eid, target := str("calId"), str("eid"), str("target")
+	if cal == "" {
+		cal = calID(s)
+	}
+	if target == "" {
+		target = cal
+	}
+	start, end := str("start"), str("end")
+	if end == "" || end < start {
+		end = start
+	}
+	body := map[string]any{"summary": str("title"), "description": str("desc")}
+	if all, _ := req["allDay"].(bool); all {
+		body["start"] = map[string]any{"date": start, "dateTime": nil, "timeZone": nil}
+		body["end"] = map[string]any{"date": nextDay(end), "dateTime": nil, "timeZone": nil}
+	} else {
+		st, et := str("stime"), str("etime")
+		if st == "" {
+			st = "09:00"
+		}
+		if et == "" || (end == start && et <= st) { // 끝 시간이 없거나 앞서면 1시간짜리로
+			t, _ := time.Parse("15:04", st)
+			et = t.Add(time.Hour).Format("15:04")
+			if et < st {
+				et = "23:59"
+			}
+		}
+		body["start"] = map[string]any{"dateTime": start + "T" + st + ":00+09:00", "timeZone": calTZ, "date": nil}
+		body["end"] = map[string]any{"dateTime": end + "T" + et + ":00+09:00", "timeZone": calTZ, "date": nil}
+	}
+	var out map[string]any
+	var err error
+	if eid != "" {
+		if target != cal { // 다른 캘린더로 옮기기
+			if _, _, err = calCall("POST", calPath(cal)+"/events/"+url.PathEscape(eid)+"/move", url.Values{"destination": {target}}, nil); err != nil {
+				return nil, err
+			}
+		}
+		out, _, err = calCall("PATCH", calPath(target)+"/events/"+url.PathEscape(eid), nil, body)
+	} else {
+		out, _, err = calCall("POST", calPath(target)+"/events", nil, body)
+	}
+	if err != nil {
+		return nil, err
+	}
+	cals, _ := calendarList()
+	return eventOut(out, calMeta(target, cals)), nil
 }
 
 func callGcal(s Settings, action string, ops []any) (map[string]any, error) {
@@ -494,6 +558,19 @@ func callGcalWith(s Settings, req map[string]any) (map[string]any, error) {
 			return nil, err
 		}
 		return map[string]any{"ok": true, "version": 2, "calendars": cals}, nil
+	case "evSave":
+		ev, err := saveEvent(s, req)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"ok": true, "event": ev}, nil
+	case "evDelete":
+		cal, _ := req["calId"].(string)
+		eid, _ := req["eid"].(string)
+		if _, code, err := calCall("DELETE", calPath(cal)+"/events/"+url.PathEscape(eid), nil, nil); err != nil && code != 404 && code != 410 {
+			return nil, err
+		}
+		return map[string]any{"ok": true}, nil
 	case "list":
 		from, _ := req["from"].(string)
 		to, _ := req["to"].(string)

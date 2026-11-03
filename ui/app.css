@@ -485,3 +485,58 @@ td .pill.tint{font-weight:500;border-radius:5px;padding:2px 8px;font-size:12.5px
 .fld .cal-pick .check input[type=checkbox]{width:16px;height:16px;min-width:0;padding:0;margin:0;border:0;flex:none;box-shadow:none;accent-color:var(--accent)}
 .cal-pick .check .dot{width:9px;height:9px}
 .cal-pick .hint{flex-basis:100%}
+
+/* 1.8 — 학교 묶음 접기 */
+.filters .grp-all{margin-left:auto}
+.filters .grp-all:not([hidden])+.check{margin-left:0}
+.grp-tog{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;padding:0;color:inherit;font:inherit;font-weight:600;cursor:pointer;text-align:left;height:100%}
+.grp-tog .gchev{display:inline-flex;width:20px;height:20px;align-items:center;justify-content:center;border-radius:5px;color:var(--muted);transition:transform .15s}
+.grp-tog:hover .gchev{background:var(--seg);color:var(--ink)}
+.grp-tog .gchev svg{width:14px;height:14px}
+#listView tr.grp.folded .gchev{transform:rotate(-90deg)}
+#listView tbody.g tr.grp.folded td{border-bottom-color:var(--line)}
+
+/* 1.8 — 캘린더 목록 패널 (노션 캘린더 왼쪽 목록처럼) */
+.cal-shell{display:flex;flex:1;min-height:0}
+.cal-shell>.cal{flex:1;min-width:0}
+.cal-side{width:210px;flex:none;border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:18px;overflow-y:auto;background:var(--sunken)}
+.cal-shell.side-off .cal-side{display:none}
+.cs-sec{display:flex;flex-direction:column;gap:2px}
+.cs-h{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:12px;font-weight:600;color:var(--muted);padding:0 6px 6px}
+.cs-h span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cs-ref{width:24px;height:24px;background:none}
+.cs-ref svg{width:13px;height:13px}
+.cs-item{display:flex;align-items:center;gap:9px;padding:6px;border-radius:7px;font-size:13px;color:var(--ink2);cursor:pointer;min-width:0}
+.cs-item:hover{background:var(--hover)}
+.cs-item>span:first-of-type{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cs-item input{appearance:none;-webkit-appearance:none;width:16px;height:16px;margin:0;flex:none;border-radius:4px;border:2px solid var(--c);background:transparent;cursor:pointer;display:grid;place-items:center}
+.cs-item input:checked{background:var(--c)}
+.cs-item input:checked::after{content:"";width:8px;height:4px;border:2px solid #fff;border-top:0;border-right:0;transform:translateY(-1px) rotate(-45deg)}
+.cs-item input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cs-tag{font-size:10.5px;font-weight:700;padding:1px 5px;border-radius:4px;background:var(--seg);color:var(--muted);flex:none}
+.cs-empty{font-size:12px;color:var(--muted);padding:6px}
+.cal-sidetog{width:32px;height:32px;background:transparent}
+.cal-sidetog[aria-pressed=true]{color:var(--accent-ink)}
+
+/* 1.8 — 일정 편집 창 */
+button.cal-ev.cal-g{cursor:pointer;border:0;font:inherit;font-size:12px;text-align:left}
+.cal-ev.cal-g.sel{outline:2px solid var(--accent);outline-offset:1px}
+.cal-ev[draggable=true]{cursor:grab}
+.cal-day.drop-over{background:var(--accent-soft)!important;box-shadow:inset 0 0 0 2px var(--accent)}
+.cal-ed{position:absolute;z-index:6;width:320px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 40px rgba(16,24,40,.22);padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px}
+:root[data-theme=dark] .cal-ed{box-shadow:0 20px 60px rgba(0,0,0,.55)}
+.ce-h{display:flex;align-items:center;gap:8px;font-size:13px}
+.ce-h .sp{flex:1}
+.ce-h .btn.danger.confirm{background:var(--bad-bg)}
+.ce-dot{width:10px;height:10px;border-radius:3px;flex:none}
+.ce-title{border:0;border-bottom:1px solid var(--line);background:transparent;font-size:17px;font-weight:700;padding:4px 0 6px;outline:0;color:var(--ink)}
+.ce-title:focus{border-bottom-color:var(--accent)}
+.ce-all{margin:0!important;font-size:13px;color:var(--ink2)}
+.ce-when{display:grid;grid-template-columns:30px 1fr 118px;align-items:center;gap:6px}
+.ce-when .muted{font-size:12px}
+.ce-when input{height:32px;border:1px solid var(--field);border-radius:7px;padding:0 6px;background:var(--surface);color:var(--ink);font-size:13px}
+.ce-when input{width:100%;min-width:0}
+.cal-ed .fld textarea{min-height:56px}
+.ce-foot{display:flex;align-items:center;gap:8px}
+.ce-foot .sp{flex:1}
+.ce-foot .hint{font-size:12px}

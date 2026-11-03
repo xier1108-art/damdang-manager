@@ -40,7 +40,7 @@ let data = null;
 const ui = {
   view: 'list', school: '__all', status: '전체', cat: '전체', q: '', kpi: null,
   expandAll: false, expanded: new Set(), sel: null, sort: { key: null, dir: 1 }, activeOnly: true,
-  colW: {}, calMonth: null, calMore: null,
+  colW: {}, calMonth: null, calMore: null, collapsed: new Set(), calSide: true, calShowContracts: true, calEdit: null,
 };
 // 목록 열(키, 이름) — 너비 조정 기준
 const COLS = ['title', 'category', 'status', 'contractor', 'amount', 'contractDate', 'startDate', 'endDate', 'dday'];
@@ -225,6 +225,11 @@ function renderTop() {
   $('#expandAll').checked = ui.expandAll;
   $('#activeOnly').checked = ui.activeOnly;
   $('#expandWrap').hidden = ui.view !== 'list';
+  const ga = $('#grpAll');
+  if (ga) {
+    ga.hidden = ui.view !== 'list' || ui.school !== '__all';
+    ga.textContent = visibleTree().every((g) => ui.collapsed.has(g.school)) && ui.collapsed.size ? '학교 모두 펼치기' : '학교 모두 접기';
+  }
   $('#activeOnlyWrap').hidden = ui.view === 'list';
   $('#listView').hidden = ui.view !== 'list';
   $('#calendarView').hidden = ui.view !== 'calendar';
@@ -352,11 +357,12 @@ function renderList() {
   let body = '';
   for (const g of tree) {
     body += '<tbody class="gap" aria-hidden="true"><tr><td colspan="9"></td></tr></tbody><tbody class="g">';
+    const folded = ui.school === '__all' && ui.collapsed.has(g.school) && !ui.q.trim(); // 검색 중에는 다 펼친다
     if (ui.school === '__all') {
       const sum = g.rows.reduce((a, r) => a + (r.item.amount || 0), 0);
-      body += `<tr class="grp"><td colspan="9"><span class="pill tint" style="${tintVars(schoolColor(g.school))}">${esc(g.school)}</span><span class="gmeta">${g.rows.length}건 · ${korMoney(sum)}</span></td></tr>`;
+      body += `<tr class="grp${folded ? ' folded' : ''}"><td colspan="9"><button type="button" class="grp-tog" data-grptog="${esc(g.school)}" aria-expanded="${!folded}" title="${folded ? '펼치기' : '접기'}"><span class="gchev">${ICON.chev}</span><span class="pill tint" style="${tintVars(schoolColor(g.school))}">${esc(g.school)}</span><span class="gmeta">${g.rows.length}건 · ${korMoney(sum)}</span></button></td></tr>`;
     }
-    for (const r of g.rows) {
+    if (!folded) for (const r of g.rows) {
       const hasKids = r.allKids.length > 0;
       body += rowHtml(r.item, 0, hasKids, r.open);
       if (r.open) for (const k of r.kids) body += rowHtml(k, 1, false, false);
@@ -372,6 +378,7 @@ function renderList() {
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 function calEvents() {
   const map = new Map();
+  if (!ui.calShowContracts) return map;
   const add = (date, ev) => { if (!map.has(date)) map.set(date, []); map.get(date).push(ev); };
   for (const x of data.items) {
     if (!matchSelf(x)) continue;
@@ -386,7 +393,7 @@ function calEvents() {
 const GCAL_EVENT_COLORS = { 1: '#7986CB', 2: '#33B679', 3: '#8E24AA', 4: '#E67C73', 5: '#F6BF26', 6: '#F4511E', 7: '#039BE5', 8: '#616161', 9: '#3F51B5', 10: '#0B8043', 11: '#D50000' };
 const gev = { on: true, cache: new Map(), byDay: new Map(), busy: false, err: '' };
 function gevOn() { return gev.on && cfg.hasGcal; }
-function gevReset() { gev.cache.clear(); gev.byDay.clear(); gev.err = ''; }
+function gevReset() { gev.cache.clear(); gev.byDay.clear(); gevIndex.clear(); gev.err = ''; }
 async function gevEnsure(ym) {
   if (!gevOn() || gev.busy) return;
   const [y, m] = ym.split('-').map(Number);
@@ -407,11 +414,14 @@ async function gevEnsure(ym) {
     gev.err = e.message || String(e);
     for (const k of need) gev.cache.set(k, { at: Date.now(), list: (gev.cache.get(k) || {}).list || [] }); // 실패해도 5분은 다시 묻지 않음
   } finally { gev.busy = false; }
-  gev.byDay.clear();
-  const seen = new Set();
+  gevRebuild();
+  if (ui.view === 'calendar') renderCalendar();
+}
+function gevRebuild() {
+  gev.byDay.clear(); gevIndex.clear();
   for (const { list } of gev.cache.values()) for (const e of list) {
-    if (seen.has(e.id)) continue;
-    seen.add(e.id);
+    if (gevIndex.has(e.id)) continue;
+    gevIndex.set(e.id, e);
     const s = parseD(e.start), en = parseD(e.end || e.start);
     for (let d = s, n = 0; d <= en && n < 62; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1), n++) {
       const ds = ymd(d);
@@ -419,13 +429,13 @@ async function gevEnsure(ym) {
       gev.byDay.get(ds).push({ g: e });
     }
   }
-  for (const arr of gev.byDay.values()) arr.sort((a, b) => (a.g.allDay === b.g.allDay ? 0 : a.g.allDay ? -1 : 1) || a.g.time.localeCompare(b.g.time) || a.g.title.localeCompare(b.g.title, 'ko'));
-  if (ui.view === 'calendar') renderCalendar();
+  for (const arr of gev.byDay.values()) arr.sort((a, b) => (a.g.allDay === b.g.allDay ? 0 : a.g.allDay ? -1 : 1) || (a.g.time || '').localeCompare(b.g.time || '') || a.g.title.localeCompare(b.g.title, 'ko'));
 }
 function gevChip(e) {
   const c = GCAL_EVENT_COLORS[e.evColor] || e.color || '#7A808C';
   const tip = `${e.title}${e.time ? ' · ' + e.time : ''} · ${e.cal}`;
-  return `<div class="cal-ev cal-g" style="--c:${esc(c)}" title="${esc(tip)}">${e.time ? `<span class="cal-k">${esc(e.time)}</span>` : ''}<span class="cal-t">${esc(e.title)}</span></div>`;
+  const sel = ui.calEdit && ui.calEdit.ev && ui.calEdit.ev.id === e.id ? ' sel' : '';
+  return `<button type="button" class="cal-ev cal-g${sel}" data-gev="${esc(e.id)}"${e.editable ? ` draggable="true" data-drag="g|${esc(e.id)}"` : ''} style="--c:${esc(c)}" title="${esc(tip)}">${e.time ? `<span class="cal-k">${esc(e.time)}</span>` : ''}<span class="cal-t">${esc(e.title)}</span></button>`;
 }
 function calChip(ev) {
   if (ev.g) return gevChip(ev.g);
@@ -433,7 +443,7 @@ function calChip(ev) {
   const late = ev.k === 'e' && isLate(x);
   const cls = `cal-ev k-${ev.k}${late ? ' late' : ''}${x.status !== '진행' ? ' dim' : ''}${ui.sel === x.id ? ' sel' : ''}`;
   const tip = `(${ev.k === 's' ? '착수' : '완수'}) ${x.title} · ${x.school} · ${x.status}${x.amount ? ' · ' + fmt(x.amount) + '원' : ''}`;
-  return `<button type="button" class="${cls}" data-id="${x.id}" style="--c:${c[0]};--t:${c[1]};--k:${c[2]}" title="${esc(tip)}"><span class="cal-k">${ev.k === 's' ? '착수' : '완수'}</span><span class="cal-t">${esc(x.title || '(제목 없음)')}</span></button>`;
+  return `<button type="button" class="${cls}" data-id="${x.id}" draggable="true" data-drag="c|${x.id}|${ev.k}" style="--c:${c[0]};--t:${c[1]};--k:${c[2]}" title="${esc(tip)}"><span class="cal-k">${ev.k === 's' ? '착수' : '완수'}</span><span class="cal-t">${esc(x.title || '(제목 없음)')}</span></button>`;
 }
 // 노션 캘린더처럼 주 단위로 이어서 스크롤 — 계약이 있는 기간 전체를 한 번에 그린다
 const CAL_ROW = 132; // 주 한 줄 높이(px), CSS .cal-week와 같게
@@ -483,8 +493,9 @@ function renderCalendar() {
     const d = parseD(ui.calMore);
     pop = `<div class="cal-pop" role="dialog" aria-label="${d.getMonth() + 1}월 ${d.getDate()}일 일정"><div class="cal-pop-h"><strong>${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEK[d.getDay()]})</strong><button type="button" class="icon-btn" style="width:28px;height:28px" data-cal="closeMore" aria-label="닫기">${ICON.x}</button></div><div class="cal-pop-b">${dayItems(evs, ui.calMore).map(calChip).join('')}</div></div>`;
   }
-  $('#calendarView').innerHTML = `<div class="cal">
+  $('#calendarView').innerHTML = `<div class="cal-shell${ui.calSide ? '' : ' side-off'}"><aside class="cal-side" aria-label="캘린더 목록">${calSideHtml()}</aside><div class="cal">
     <div class="cal-bar">
+      <button type="button" class="icon-btn cal-sidetog" data-calside aria-label="캘린더 목록 ${ui.calSide ? '숨기기' : '보기'}" title="캘린더 목록 ${ui.calSide ? '숨기기' : '보기'}" aria-pressed="${ui.calSide}"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
       <h2 id="calTitle"></h2>
       <div class="cal-nav">
         <button type="button" class="icon-btn" data-cal="prev" aria-label="이전 달"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button>
@@ -492,16 +503,18 @@ function renderCalendar() {
         <button type="button" class="icon-btn" data-cal="next" aria-label="다음 달"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
       </div>
       <span class="muted cal-sum" id="calSum"></span>
-      ${cfg.hasGcal ? `<label class="check cal-gtog"><input type="checkbox" id="gevOn"${gev.on ? ' checked' : ''}>구글 일정 같이 보기</label>${gev.on && gev.err ? `<span class="gc-err cal-gerr" title="${esc(gev.err)}">구글 일정 못 불러옴 — ${esc(gev.err)}</span>` : ''}<span class="cal-gc" title="등록한 계약은 구글 캘린더 '업무'에도 같은 일정이 있습니다">${gcalBadge()}</span>` : ''}
+      ${cfg.hasGcal ? `<button type="button" class="btn sm" data-calnew>${ICON.plus}새 일정</button>${gev.err ? `<span class="gc-err cal-gerr" title="${esc(gev.err)}">구글 일정 못 불러옴 — ${esc(gev.err)}</span>` : ''}<span class="cal-gc" title="등록한 계약은 구글 캘린더 '업무'에도 같은 일정이 있습니다">${gcalBadge()}</span>` : ''}
     </div>
     <div class="cal-wds">${WEEK.map((w, i) => `<div class="cal-wd${i === 0 ? ' sun' : ''}">${w}</div>`).join('')}</div>
-    <div class="cal-scroll" id="calScroll"><div class="cal-body">${body}${pop}</div></div>
-    <style id="calCur"></style></div>`;
+    <div class="cal-scroll" id="calScroll"><div class="cal-body">${body}${pop}${calEditorHtml()}</div></div>
+    <style id="calCur"></style></div></div>`;
   const sc = $('#calScroll');
   if (keepDate) sc.scrollTop = calWeekOf(keepDate) * CAL_ROW + keepOff;
   else sc.scrollTop = calWeekOf((calTarget || ui.calMonth || t.slice(0, 7)) + '-01') * CAL_ROW;
   calTarget = null;
   calSync(true);
+  if (cfg.hasGcal && gcals === null) loadGcals();
+  if (ui.calEdit) placeCalEditor();
   sc.addEventListener('scroll', onCalScroll, { passive: true });
   const p = $('#calendarView .cal-pop'), cell = ui.calMore && $(`#calendarView .cal-day[data-date="${ui.calMore}"]`);
   if (p && cell) {
@@ -548,6 +561,155 @@ function calMove(dir) {
   const base = calGoto.last && Date.now() - calGoto.last.at < 700 ? calGoto.last.ym : (ui.calMonth || todayStr().slice(0, 7));
   const [y, m] = base.split('-').map(Number);
   calGoto(ymOf(new Date(y, m - 1 + dir, 1)), true);
+}
+
+// ---------- 캘린더 목록 패널 · 일정 편집 · 끌어서 날짜 바꾸기 ----------
+let gcals = null, gcalsBusy = false; // 구글 캘린더 목록 [{id,name,color,editable,primary}]
+let calDrag = null, calDragFrom = null;
+const gevIndex = new Map(); // 'calId|eventId' → 일정
+async function loadGcals(force) {
+  if (!cfg.hasGcal || gcalsBusy || (gcals && !force)) return;
+  gcalsBusy = true;
+  try {
+    const r = await fetch('api/gcal', { method: 'POST', body: JSON.stringify({ action: 'calendars' }) });
+    if (!r.ok) throw new Error(await r.text());
+    gcals = (await r.json()).calendars || [];
+  } catch (e) { gcals = []; gev.err = e.message || String(e); }
+  gcalsBusy = false;
+  if (ui.view === 'calendar') renderCalendar();
+}
+const primaryCal = () => ((gcals || []).find((c) => c.primary) || {}).id || 'primary';
+const writeCal = () => cfg.gcalCalendar || primaryCal(); // 계약 일정을 넣는 캘린더(새 일정 기본값)
+function shownCals() {
+  const s = cfg.gcalShow || [];
+  return s.length ? s.filter((x) => x !== 'none') : [writeCal()];
+}
+function calSideHtml() {
+  const contracts = `<label class="cs-item"><input type="checkbox" data-calshowc${ui.calShowContracts ? ' checked' : ''} style="--c:var(--accent)"><span>계약 착수·완수</span></label>`;
+  if (!cfg.hasGcal) {
+    return `<div class="cs-sec"><div class="cs-h">이 프로그램</div>${contracts}</div>
+      <div class="cs-sec"><div class="cs-h">구글 캘린더</div><button type="button" class="link-btn" data-act="gcalSetup">Google 계정 연결하기</button></div>`;
+  }
+  const shown = new Set(shownCals()), wc = writeCal();
+  const list = gcals === null ? '<div class="cs-empty"><span class="spin"></span> 불러오는 중…</div>'
+    : gcals.map((c) => `<label class="cs-item" title="${esc(c.name)}"><input type="checkbox" data-calvis="${esc(c.id)}"${shown.has(c.id) ? ' checked' : ''} style="--c:${esc(c.color || '#7A808C')}"><span>${esc(c.name)}</span>${c.id === wc ? '<span class="cs-tag" title="계약 착수·완수 일정을 넣는 캘린더">계약</span>' : ''}${c.editable ? '' : '<span class="cs-tag" title="읽기 전용">보기</span>'}</label>`).join('');
+  return `<div class="cs-sec"><div class="cs-h">이 프로그램</div>${contracts}</div>
+    <div class="cs-sec"><div class="cs-h"><span title="${esc(cfg.googleEmail || '')}">${esc(cfg.googleEmail || '구글 캘린더')}</span><button type="button" class="icon-btn cs-ref" data-calref aria-label="캘린더 목록 새로 고침" title="새로 고침"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></svg></button></div>${list}</div>`;
+}
+async function toggleCalVis(id, on) {
+  const s = new Set(shownCals());
+  if (on) s.add(id); else s.delete(id);
+  await postSettings({ gcalShow: s.size ? [...s] : ['none'] });
+  gevReset(); renderCalendar();
+}
+
+// 편집 창 — ui.calEdit = { ev } (고치기) 또는 { date } (새 일정)
+function calEditorHtml() {
+  const ce = ui.calEdit; if (!ce) return '';
+  const ev = ce.ev || { title: '', allDay: true, start: ce.date, end: ce.date, time: '09:00', etime: '10:00', desc: '', calId: writeCal(), editable: true };
+  const isNew = !ce.ev, ro = !ev.editable;
+  const cals = (gcals || []).filter((c) => c.editable || c.id === ev.calId);
+  const cal = (gcals || []).find((c) => c.id === ev.calId);
+  const dot = GCAL_EVENT_COLORS[ev.evColor] || (cal && cal.color) || ev.color || '#7A808C';
+  const dis = ro ? ' disabled' : '';
+  return `<div class="cal-ed" role="dialog" aria-label="${isNew ? '새 일정' : '일정 편집'}">
+    <div class="ce-h"><span class="ce-dot" style="background:${esc(dot)}"></span><strong>${isNew ? '새 일정' : '일정'}</strong><span class="sp"></span>
+      ${!isNew && !ro ? `<button type="button" class="btn sm ghost danger" data-ce="del">${ICON.trash}삭제</button>` : ''}
+      <button type="button" class="icon-btn" style="width:28px;height:28px" data-ce="close" aria-label="닫기">${ICON.x}</button></div>
+    <input class="ce-title" id="ceTitle" value="${esc(ev.title)}" placeholder="제목"${dis} aria-label="제목">
+    <label class="check ce-all"><input type="checkbox" id="ceAll"${ev.allDay ? ' checked' : ''}${dis}>종일</label>
+    <div class="ce-when">
+      <span class="muted">시작</span><input type="date" id="ceStart" value="${esc(ev.start)}"${dis} aria-label="시작 날짜"><input type="time" id="ceStime" value="${esc(ev.time || '09:00')}"${dis} aria-label="시작 시간"${ev.allDay ? ' hidden' : ''}>
+      <span class="muted">끝</span><input type="date" id="ceEnd" value="${esc(ev.end || ev.start)}"${dis} aria-label="끝 날짜"><input type="time" id="ceEtime" value="${esc(ev.etime || '10:00')}"${dis} aria-label="끝 시간"${ev.allDay ? ' hidden' : ''}>
+    </div>
+    <label class="fld">캘린더<select id="ceCal"${dis}>${cals.map((c) => `<option value="${esc(c.id)}"${c.id === ev.calId ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+    <label class="fld">설명<textarea id="ceDesc" rows="3"${dis}>${esc(ev.desc || '')}</textarea></label>
+    ${ev.recurring ? '<p class="hint">반복 일정입니다 — 이 날짜의 일정만 바뀝니다.</p>' : ''}
+    ${ro ? '<p class="hint">이 캘린더는 읽기 전용이라 고칠 수 없습니다.</p>' : ''}
+    <div class="ce-foot"><span class="hint" id="ceMsg">저장하면 구글 캘린더에 바로 반영됩니다</span><span class="sp"></span>${ro ? '' : `<button type="button" class="btn sm primary" data-ce="save">${isNew ? '만들기' : '저장'}</button>`}</div>
+  </div>`;
+}
+function placeCalEditor() {
+  const ed = $('#calendarView .cal-ed'), sc = $('#calScroll'); if (!ed || !sc) return;
+  const ce = ui.calEdit;
+  const anchor = (ce.ev && $(`#calendarView [data-gev="${CSS.escape(ce.ev.id)}"]`)) || $(`#calendarView .cal-day[data-date="${ce.ev ? ce.ev.start : ce.date}"]`);
+  const bw = $('#calendarView .cal-body').clientWidth;
+  let left = 8, top = sc.scrollTop + 8;
+  if (anchor) {
+    const day = anchor.closest('.cal-day') || anchor;
+    left = day.offsetLeft + day.offsetWidth + 6;
+    if (left + 330 > bw) left = day.offsetLeft - 330 - 6;
+    top = day.offsetTop;
+  }
+  ed.style.left = Math.max(8, Math.min(bw - 330, left)) + 'px';
+  ed.style.top = Math.max(sc.scrollTop + 8, Math.min(sc.scrollTop + sc.clientHeight - ed.offsetHeight - 8, top)) + 'px';
+}
+function openCalEditor(ce) {
+  ui.calEdit = ce; ui.calMore = null;
+  if (cfg.hasGcal && gcals === null) loadGcals();
+  renderCalendar();
+  setTimeout(() => { const t = $('#ceTitle'); if (t && !t.disabled && !ce.ev) t.focus(); }, 30);
+}
+function closeCalEditor() { if (!ui.calEdit) return; ui.calEdit = null; const ed = $('#calendarView .cal-ed'); if (ed) ed.remove(); }
+async function gevSave(ev, patch) {
+  const b = Object.assign({ action: 'evSave', calId: ev.calId || '', eid: ev.eid || '', target: ev.calId || writeCal(), title: ev.title, allDay: ev.allDay, start: ev.start, end: ev.end, stime: ev.time, etime: ev.etime, desc: ev.desc || '' }, patch);
+  const r = await fetch('api/gcal', { method: 'POST', body: JSON.stringify(b) });
+  if (!r.ok) throw new Error(await r.text());
+  return (await r.json()).event;
+}
+async function saveCalEditor() {
+  const ce = ui.calEdit; if (!ce) return;
+  const v = (id) => ($(id) || {}).value || '';
+  const allDay = $('#ceAll').checked;
+  const start = v('#ceStart'), end = v('#ceEnd') || start;
+  if (!start) { $('#ceMsg').textContent = '시작 날짜를 넣어 주세요'; return; }
+  if (end < start) { $('#ceMsg').textContent = '끝 날짜가 시작보다 앞섭니다'; return; }
+  const btn = $('#calendarView [data-ce="save"]'); btn.disabled = true;
+  $('#ceMsg').innerHTML = '<span class="spin"></span> 구글 캘린더에 저장하는 중…';
+  try {
+    await gevSave(ce.ev || {}, { title: v('#ceTitle').trim() || '(제목 없음)', allDay, start, end, stime: v('#ceStime'), etime: v('#ceEtime'), desc: v('#ceDesc'), target: v('#ceCal') || writeCal(), calId: ce.ev ? ce.ev.calId : v('#ceCal') });
+    ui.calEdit = null; gevReset(); renderCalendar();
+    toast(ce.ev ? '일정을 고쳤습니다 — 구글 캘린더에도 반영됨' : '새 일정을 만들었습니다 — 구글 캘린더에도 반영됨');
+  } catch (e) { btn.disabled = false; $('#ceMsg').innerHTML = `<span class="gc-err">${esc(e.message || e)}</span>`; }
+}
+async function deleteCalEditor(btn) {
+  const ev = ui.calEdit && ui.calEdit.ev; if (!ev) return;
+  if (!btn.classList.contains('confirm')) { btn.classList.add('confirm'); btn.innerHTML = `${ICON.trash}한 번 더 누르면 삭제`; return; }
+  btn.disabled = true;
+  try {
+    const r = await fetch('api/gcal', { method: 'POST', body: JSON.stringify({ action: 'evDelete', calId: ev.calId, eid: ev.eid }) });
+    if (!r.ok) throw new Error(await r.text());
+    ui.calEdit = null; gevReset(); renderCalendar();
+    toast(`'${ev.title}' 일정을 지웠습니다 — 구글 캘린더에서도 삭제됨`);
+  } catch (e) { btn.disabled = false; $('#ceMsg').innerHTML = `<span class="gc-err">${esc(e.message || e)}</span>`; }
+}
+const addDays = (ds, n) => { const d = parseD(ds); return ymd(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)); };
+// 끌어 놓은 날짜로 — 계약 착수·완수일이나 구글 일정의 날짜를 바꾼다
+async function calDropTo(payload, from, to) {
+  if (!to || from === to) return;
+  if (payload.startsWith('c|')) {
+    const [, id, k] = payload.split('|'), x = byId.get(id);
+    if (!x) return;
+    const key = k === 's' ? 'startDate' : 'endDate', prev = x[key];
+    x[key] = to;
+    addHistory(x, '직접 수정', [{ k: key, from: prev, to }]);
+    touch(x); reindex(); scheduleSave(); render();
+    toast(`${x.title} ${k === 's' ? '착수일' : '완수일'} ${shortD(prev)} → ${shortD(to)}`, '되돌리기', () => { x[key] = prev; addHistory(x, '직접 수정', [{ k: key, from: to, to: prev }]); touch(x); reindex(); scheduleSave(); render(); });
+    return;
+  }
+  const ev = gevIndex.get(payload.slice(2));
+  if (!ev || !ev.editable) return;
+  const n = diffDays(to, from), was = { start: ev.start, end: ev.end };
+  ev.start = addDays(ev.start, n); ev.end = addDays(ev.end || was.start, n);
+  gevRebuild(); renderCalendar(); // 먼저 화면에서 옮기고
+  try {
+    await gevSave(ev, {});
+    toast(`'${ev.title}' ${shortD(was.start)} → ${shortD(ev.start)} — 구글 캘린더에도 반영됨`);
+  } catch (e) {
+    Object.assign(ev, was); gevRebuild(); renderCalendar();
+    toast('옮기지 못했습니다: ' + (e.message || e));
+  }
+  gevReset(); gevEnsure(ui.calMonth);
 }
 
 // ---------- 렌더: 상세 ----------
@@ -1342,7 +1504,7 @@ if (darkMQ) darkMQ.addEventListener('change', () => { if (themeMode() === 'syste
 
 // ---------- 환경설정 기억 ----------
 function savePrefs() {
-  try { localStorage.setItem('dm-prefs', JSON.stringify({ view: ui.view, school: ui.school, expandAll: ui.expandAll, activeOnly: ui.activeOnly, expanded: [...ui.expanded], colW: ui.colW, gevOn: gev.on })); } catch (e) { /* 무시 */ }
+  try { localStorage.setItem('dm-prefs', JSON.stringify({ view: ui.view, school: ui.school, expandAll: ui.expandAll, activeOnly: ui.activeOnly, expanded: [...ui.expanded], colW: ui.colW, collapsed: [...ui.collapsed], calSide: ui.calSide, calShowContracts: ui.calShowContracts })); } catch (e) { /* 무시 */ }
 }
 function loadPrefs() {
   try {
@@ -1351,7 +1513,9 @@ function loadPrefs() {
     ui.expandAll = !!p.expandAll; if (p.activeOnly === false) ui.activeOnly = false;
     if (Array.isArray(p.expanded)) ui.expanded = new Set(p.expanded);
     if (p.colW && typeof p.colW === 'object') ui.colW = p.colW;
-    if (p.gevOn === false) gev.on = false;
+    if (Array.isArray(p.collapsed)) ui.collapsed = new Set(p.collapsed);
+    if (p.calSide === false) ui.calSide = false;
+    if (p.calShowContracts === false) ui.calShowContracts = false;
   } catch (e) { /* 무시 */ }
 }
 
@@ -1390,6 +1554,17 @@ function bind() {
       toast('변경 이력 1건을 지웠습니다', '되돌리기', () => { x.history.splice(i, 0, gone); saveQuiet(); renderDetail(); });
       return;
     }
+    const gt = t.closest('[data-grptog]');
+    if (gt) { const k = gt.dataset.grptog; ui.collapsed.has(k) ? ui.collapsed.delete(k) : ui.collapsed.add(k); renderList(); savePrefs(); return; }
+    if (t.closest('[data-grpall]')) { const all = visibleTree().map((g) => g.school); if (all.every((k) => ui.collapsed.has(k))) ui.collapsed.clear(); else all.forEach((k) => ui.collapsed.add(k)); renderTop(); renderList(); savePrefs(); return; }
+    if (t.closest('[data-calside]')) { ui.calSide = !ui.calSide; savePrefs(); renderCalendar(); return; }
+    if (t.closest('[data-calref]')) { gcals = null; gevReset(); loadGcals(true); return; }
+    if (t.closest('[data-calnew]')) { openCalEditor({ date: (ui.calMonth || todayStr().slice(0, 7)) === todayStr().slice(0, 7) ? todayStr() : ui.calMonth + '-01' }); return; }
+    const gvb = t.closest('[data-gev]');
+    if (gvb) { const ev = gevIndex.get(gvb.dataset.gev); if (ev) openCalEditor({ ev: Object.assign({}, ev) }); return; }
+    const ceb = t.closest('[data-ce]');
+    if (ceb) { const a = ceb.dataset.ce; if (a === 'close') closeCalEditor(); else if (a === 'save') saveCalEditor(); else if (a === 'del') deleteCalEditor(ceb); return; }
+    if (ui.calEdit && !t.closest('.cal-ed')) closeCalEditor();
     const th_ = t.closest('[data-theme-set]'); if (th_) { applyTheme(th_.dataset.themeSet); return; }
     const cal = t.closest('[data-cal]');
     if (cal) { const c = cal.dataset.cal; if (c === 'prev') calMove(-1); else if (c === 'next') calMove(1); else if (c === 'today') calGoto(todayStr().slice(0, 7), true); else { ui.calMore = null; const p = $('#calendarView .cal-pop'); if (p) p.remove(); } return; }
@@ -1431,8 +1606,40 @@ function bind() {
   $('#detail').addEventListener('input', (e) => { if (!syncing) onField(e, false); });
   $('#detail').addEventListener('focusin', noteFieldStart);
   document.addEventListener('change', (e) => {
-    if (e.target.id !== 'gevOn') return;
-    gev.on = e.target.checked; savePrefs(); renderCalendar();
+    const t = e.target;
+    if (t.matches('[data-calvis]')) toggleCalVis(t.dataset.calvis, t.checked);
+    else if (t.matches('[data-calshowc]')) { ui.calShowContracts = t.checked; savePrefs(); renderCalendar(); }
+    else if (t.id === 'ceAll') { $('#ceStime').hidden = t.checked; $('#ceEtime').hidden = t.checked; }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'ceTitle') { e.preventDefault(); saveCalEditor(); } });
+  // 캘린더: 빈 곳을 두 번 누르면 새 일정, 일정을 끌어 다른 날로 옮기기
+  const cv = $('#calendarView');
+  cv.addEventListener('dblclick', (e) => {
+    const d = e.target.closest('.cal-day');
+    if (!d || e.target.closest('.cal-ev,.cal-more,.cal-ed,.cal-pop') || !cfg.hasGcal) return;
+    openCalEditor({ date: d.dataset.date });
+  });
+  cv.addEventListener('dragstart', (e) => {
+    const c = e.target.closest && e.target.closest('[data-drag]'); if (!c) return;
+    calDrag = c.dataset.drag; calDragFrom = (c.closest('.cal-day') || {}).dataset?.date;
+    e.dataTransfer.setData('text/plain', calDrag); e.dataTransfer.effectAllowed = 'move';
+    closeCalEditor();
+  });
+  cv.addEventListener('dragover', (e) => {
+    if (!calDrag) return;
+    const d = e.target.closest('.cal-day'); if (!d) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+    $$('#calendarView .cal-day.drop-over').forEach((x) => { if (x !== d) x.classList.remove('drop-over'); });
+    d.classList.add('drop-over');
+  });
+  const endDrag = () => { calDrag = null; $$('#calendarView .cal-day.drop-over').forEach((x) => x.classList.remove('drop-over')); };
+  cv.addEventListener('dragend', endDrag);
+  cv.addEventListener('drop', (e) => {
+    if (!calDrag) return;
+    e.preventDefault(); e.stopPropagation();
+    const d = e.target.closest('.cal-day'), payload = calDrag, from = calDragFrom;
+    endDrag();
+    if (d) calDropTo(payload, from, d.dataset.date);
   });
   $('#detail').addEventListener('change', (e) => {
     if (e.target.id === 'docInput') {
@@ -1488,6 +1695,7 @@ function bind() {
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); clearTimeout(saveTimer); saveNow(); }
     else if (e.key === 'Escape') {
       if (!$('#modalBack').hidden) closeModal();
+      else if (ui.calEdit) closeCalEditor();
       else if (ui.calMore) { ui.calMore = null; renderCalendar(); }
       else if (document.activeElement === $('#q') && $('#q').value) { $('#q').value = ''; ui.q = ''; renderMain(); }
       else if (ui.sel) { ui.sel = null; render(); }

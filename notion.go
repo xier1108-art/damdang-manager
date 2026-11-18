@@ -298,6 +298,10 @@ type syncReport struct {
 	Errors                                                      []string
 }
 
+func syncLooksBroken(known, missing, remote int) bool {
+	return missing > 0 && (remote == 0 || (missing > 5 && missing*2 > known))
+}
+
 func runSync() (map[string]any, *syncReport, error) {
 	s := loadSettings()
 	if s.NotionToken == "" {
@@ -358,6 +362,22 @@ func runSync() (map[string]any, *syncReport, error) {
 	}
 	lastSync, _ := doc["lastSync"].(string)
 	rep := &syncReport{}
+
+	// 노션에서 받은 계약이 비었거나 절반 넘게 빠지면 지워진 게 아니라 권한·연결 문제다 — 아무것도 바꾸지 않는다
+	known, missing := 0, 0
+	for _, it := range items {
+		id, _ := it["id"].(string)
+		if strings.HasPrefix(id, "l") || deleted[id] {
+			continue
+		}
+		known++
+		if _, ok := remote[id]; !ok {
+			missing++
+		}
+	}
+	if syncLooksBroken(known, missing, len(remote)) {
+		return nil, nil, fmt.Errorf("노션에서 계약 %d건 중 %d건을 받지 못해 동기화를 멈췄습니다(앱 데이터는 그대로입니다). 노션 통합에 '콘텐츠 읽기' 권한이 있는지, 계약 추진현황 DB의 ⋯ › 연결에 그 통합이 추가돼 있는지 확인해 주세요", known, missing)
+	}
 
 	// 3) 로컬 삭제 → 노션 보관(휴지통)
 	for id := range deleted {
@@ -604,5 +624,11 @@ func handleNotionTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	title := plain(m["title"])
-	writeJSON(w, map[string]any{"ok": true, "title": title})
+	q, err := nc.do("POST", "/databases/"+s.NotionDB+"/query", map[string]any{"page_size": 1})
+	if err != nil {
+		http.Error(w, err.Error(), 502)
+		return
+	}
+	res, _ := q["results"].([]any)
+	writeJSON(w, map[string]any{"ok": true, "title": title, "rows": len(res)})
 }

@@ -1050,7 +1050,7 @@ async function openSettings(focus) {
         let html = line('Claude API', r.anthropic) + line('노션', r.notion) + (r.google ? line('구글 로그인 서버', r.google) : '') + (r.gcal ? line(`구글 캘린더${r.gcal.name ? ` '${r.gcal.name}'` : ''}`, r.gcal) : '');
         if (r.notion.ok && cfg.hasNotionToken) {
           const t = await fetch('api/notion/test');
-          html += t.ok ? `<span class="ok">DB '${esc((await t.json()).title)}' 접근 가능</span>` : `<span class="bad">${esc(await t.text())}</span>`;
+          if (t.ok) { const j = await t.json(); html += j.rows ? `<span class="ok">DB '${esc(j.title)}' 접근 가능</span>` : `<span class="bad">DB는 찾았지만 계약을 하나도 읽지 못합니다 — 노션 통합의 '콘텐츠 읽기' 권한과 DB 연결을 확인하세요. 이 상태로는 동기화하지 않습니다.</span>`; } else html += `<span class="bad">${esc(await t.text())}</span>`;
         }
         out.innerHTML = html;
       } catch (e) { out.innerHTML = `<span class="bad">${esc(e.message || e)}</span>`; }

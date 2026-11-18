@@ -70,8 +70,13 @@ func (n *notionClient) do(method, path string, body any) (map[string]any, error)
 			time.Sleep(time.Duration(1+attempt) * time.Second)
 			continue
 		}
+		if err := blockedPage(rb); err != nil {
+			return nil, fmt.Errorf("노션 API(api.notion.com): %v. 다른 네트워크에서 동기화하거나 전산 담당에 허용을 요청해 주세요", err)
+		}
 		var m map[string]any
-		json.Unmarshal(rb, &m)
+		if err := json.Unmarshal(rb, &m); err != nil {
+			return nil, fmt.Errorf("노션 응답을 읽지 못했습니다(HTTP %d)", resp.StatusCode)
+		}
 		if resp.StatusCode != 200 {
 			msg, _ := m["message"].(string)
 			switch resp.StatusCode {

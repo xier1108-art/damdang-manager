@@ -138,6 +138,10 @@ func handleAIExtract(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, apiErr(code, rb), 502)
 		return
 	}
+	if err := blockedPage(rb); err != nil {
+		http.Error(w, "Claude API: "+err.Error(), 502)
+		return
+	}
 	var out struct {
 		Content []struct {
 			Type  string          `json:"type"`

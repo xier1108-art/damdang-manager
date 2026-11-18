@@ -19,3 +19,12 @@ func TestSyncLooksBroken(t *testing.T) {
 		}
 	}
 }
+
+func TestBlockedPage(t *testing.T) {
+	if blockedPage([]byte(`<!DOCTYPE html><html><body><iframe src="https://x/warning.html"></iframe>`)) == nil {
+		t.Error("차단 안내 HTML을 놓침")
+	}
+	if blockedPage([]byte(` {"object":"list","results":[]}`)) != nil {
+		t.Error("정상 JSON을 차단으로 봄")
+	}
+}

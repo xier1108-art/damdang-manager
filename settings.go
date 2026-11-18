@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -205,6 +207,14 @@ func normalizeNotionID(v string) string {
 	return v
 }
 
+// 기관망 보안 장비는 막은 주소에 200과 함께 차단 안내 HTML을 돌려준다 — 정상 응답으로 오인하지 않게
+func blockedPage(b []byte) error {
+	if t := bytes.TrimSpace(b); len(t) > 0 && t[0] == '<' {
+		return errors.New("기관망 보안 장비가 이 주소를 막고 있습니다(차단 안내 페이지가 왔습니다)")
+	}
+	return nil
+}
+
 // 외부 연결용 HTTP 클라이언트(프록시 설정 반영)
 func httpClient(timeout time.Duration) *http.Client {
 	s := loadSettings()
@@ -240,14 +250,18 @@ func handleNetTest(w http.ResponseWriter, r *http.Request) {
 			}
 			return map[string]any{"ok": false, "msg": msg}
 		}
+		head, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		resp.Body.Close()
+		if blockedPage(head) != nil {
+			return map[string]any{"ok": false, "msg": "기관망에서 차단됨(차단 안내 페이지)"}
+		}
 		return map[string]any{"ok": true, "msg": "연결됨", "ms": time.Since(t).Milliseconds(), "code": resp.StatusCode}
 	}
 	res := map[string]any{
 		"anthropic": probe("https://api.anthropic.com/v1/models"),
 		"notion":    probe("https://api.notion.com/v1/users/me"),
 	}
-	res["google"] = probe("https://oauth2.googleapis.com/")
+	res["google"] = probe("https://oauth2.googleapis.com/tokeninfo") // JSON으로 답하는 주소(루트는 정상일 때도 HTML 404)
 	if s := loadSettings(); s.GoogleRefresh != "" {
 		if out, err := callGcal(s, "ping", nil); err != nil {
 			res["gcal"] = map[string]any{"ok": false, "msg": err.Error()}

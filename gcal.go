@@ -160,8 +160,11 @@ func calCall(method, path string, q url.Values, body any) (map[string]any, int, 
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	if err := blockedPage(raw); err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("구글 캘린더: %v", err)
+	}
 	var out map[string]any
-	json.Unmarshal(raw, &out)
+	json.Unmarshal(raw, &out) // DELETE는 빈 응답
 	if resp.StatusCode >= 400 {
 		msg := fmt.Sprintf("HTTP %d", resp.StatusCode)
 		if e, ok := out["error"].(map[string]any); ok {

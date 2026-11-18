@@ -979,6 +979,7 @@ async function openSettings(focus) {
         <label class="fld">통합 토큰 <span class="hint">notion.so/profile/integrations에서 내부 통합 생성 → 계약 추진현황 DB의 ⋯ › 연결에 추가</span>
           <input id="sNotion" type="password" autocomplete="off" placeholder="${st.hasNotionToken ? '저장됨 ' + esc(st.notionTokenMasked) + ' — 바꿀 때만 입력' : 'ntn_…'}"></label>
         <label class="fld">데이터베이스 주소 또는 ID<input id="sDb" value="${esc(st.notionDb || '')}"></label>
+        <label class="fld">경유 주소 <span class="hint">기관망에서 노션이 막혀 있을 때만 · 비우면 노션에 직접 연결</span><input id="sRelay" value="${esc(st.notionRelay || '')}" placeholder="https://…vercel.app/notion"></label>
         <div class="grid2">
           <label class="check" style="margin:0"><input type="checkbox" id="sAuto"${st.autoSync ? ' checked' : ''}>자동 동기화</label>
           <label class="fld" style="flex-direction:row;align-items:center;gap:8px">간격(분)<input id="sMin" type="number" min="1" value="${st.syncMinutes || 10}" style="width:80px"></label>
@@ -1099,7 +1100,7 @@ async function postSettings(obj) {
   await loadCfg();
 }
 async function saveSettingsForm() {
-  const o = { model: $('#sModel').value, notionDb: $('#sDb').value, autoSync: $('#sAuto').checked, syncMinutes: Number($('#sMin').value) || 10, proxy: $('#sProxy').value };
+  const o = { model: $('#sModel').value, notionDb: $('#sDb').value, notionRelay: $('#sRelay').value.trim(), autoSync: $('#sAuto').checked, syncMinutes: Number($('#sMin').value) || 10, proxy: $('#sProxy').value };
   if ($('#sKey').value.trim()) o.anthropicKey = $('#sKey').value.trim();
   if ($('#sNotion').value.trim()) o.notionToken = $('#sNotion').value.trim();
   if ($('#sGSecret') && $('#sGSecret').value.trim()) o.googleSecret = $('#sGSecret').value.trim();

@@ -21,6 +21,7 @@ type Settings struct {
 	Model         string   `json:"model"`
 	NotionToken   string   `json:"notionToken"`
 	NotionDB      string   `json:"notionDb"`
+	NotionRelay   string   `json:"notionRelay"` // 노션 경유 주소(비우면 직접)
 	AutoSync      bool     `json:"autoSync"`
 	SyncMinutes   int      `json:"syncMinutes"`
 	Proxy         string   `json:"proxy"`
@@ -124,7 +125,7 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{
 			"anthropicKeyMasked": mask(s.AnthropicKey), "hasAnthropicKey": s.AnthropicKey != "",
 			"model": s.Model, "notionTokenMasked": mask(s.NotionToken), "hasNotionToken": s.NotionToken != "",
-			"notionDb": s.NotionDB, "autoSync": s.AutoSync, "syncMinutes": s.SyncMinutes, "proxy": s.Proxy, "lastSync": s.LastSync,
+			"notionDb": s.NotionDB, "notionRelay": s.NotionRelay, "autoSync": s.AutoSync, "syncMinutes": s.SyncMinutes, "proxy": s.Proxy, "lastSync": s.LastSync,
 			"hasGcal": s.GoogleRefresh != "", "googleEmail": s.GoogleEmail, "hasGoogleSecret": s.GoogleSecret != "" || buildClientSecret != "",
 			"gcalCalendar": s.GcalCalendar, "gcalShow": s.GcalShow,
 		})
@@ -145,6 +146,9 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if v, ok := str("model"); ok && v != "" {
 			s.Model = v
+		}
+		if v, ok := str("notionRelay"); ok {
+			s.NotionRelay = strings.TrimRight(v, "/")
 		}
 		if v, ok := str("notionDb"); ok {
 			s.NotionDB = normalizeNotionID(v)
@@ -259,7 +263,7 @@ func handleNetTest(w http.ResponseWriter, r *http.Request) {
 	}
 	res := map[string]any{
 		"anthropic": probe("https://api.anthropic.com/v1/models"),
-		"notion":    probe("https://api.notion.com/v1/users/me"),
+		"notion":    probe(notionBase() + "/v1/users/me"),
 	}
 	res["google"] = probe("https://oauth2.googleapis.com/tokeninfo") // JSON으로 답하는 주소(루트는 정상일 때도 HTML 404)
 	if s := loadSettings(); s.GoogleRefresh != "" {

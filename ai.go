@@ -298,6 +298,9 @@ func notionBase() string {
 	if v := os.Getenv("DM_NOTION_BASE"); v != "" {
 		return v
 	}
+	if v := loadSettings().NotionRelay; v != "" { // 기관망에서 api.notion.com이 막혀 있을 때 거치는 중계
+		return strings.TrimRight(v, "/")
+	}
 	return "https://api.notion.com"
 }
 

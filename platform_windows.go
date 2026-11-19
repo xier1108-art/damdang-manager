@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -86,8 +88,28 @@ func setWindowTheme(dark bool) {
 	})
 }
 
+// 파일은 기본 프로그램으로, 폴더는 탐색기로 연다 (숨김 옵션으로 explorer를 띄우면 창이 안 보였다)
 func openPath(p string) {
-	hidden(exec.Command("explorer", p)).Start()
+	go func() {
+		runtime.LockOSThread()
+		windows.CoInitializeEx(0, windows.COINIT_APARTMENTTHREADED)
+		defer windows.CoUninitialize()
+		verb, _ := windows.UTF16PtrFromString("open")
+		file, _ := windows.UTF16PtrFromString(p)
+		windows.ShellExecute(0, verb, file, nil, nil, windows.SW_SHOWNORMAL)
+	}()
+}
+
+// 폴더 선택 창(취소하면 빈 값). 콘솔 창 없이 PowerShell 폴더 대화상자를 띄운다
+func pickFolder(start string) (string, error) {
+	script := "Add-Type -AssemblyName System.Windows.Forms; [Console]::OutputEncoding = [Text.Encoding]::UTF8; " +
+		"$f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = '계약 문서를 보관할 폴더를 고르세요'; $f.SelectedPath = $env:DM_START; " +
+		"$o = New-Object System.Windows.Forms.Form -Property @{TopMost = $true}; if ($f.ShowDialog($o) -eq 'OK') { $f.SelectedPath }"
+	cmd := exec.Command("powershell", "-NoProfile", "-STA", "-Command", script)
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000} // CREATE_NO_WINDOW: 대화상자는 보이고 콘솔만 숨김
+	cmd.Env = append(os.Environ(), "DM_START="+start)
+	out, err := cmd.Output()
+	return strings.TrimSpace(string(out)), err
 }
 
 func selectInExplorer(p string) {

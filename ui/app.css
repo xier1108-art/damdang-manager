@@ -547,3 +547,10 @@ button.cal-ev.cal-g{cursor:pointer;border:0;font:inherit;font-size:12px;text-ali
 .cal-menu button{border:0;background:none;text-align:left;padding:8px 10px;border-radius:6px;font:inherit;font-size:13px;color:var(--ink);cursor:pointer}
 .cal-menu button:hover,.cal-menu button:focus-visible{background:var(--hover);outline:0}
 .cal-menu button.danger{color:var(--bad-ink)}
+
+/* 1.8.6 — 계약 문서 날짜·사유 폴더, 보관 위치 */
+.doc.doc-folder{font-weight:600;background:var(--sunken)}
+.doc.doc-folder svg{color:var(--accent)}
+.doc.in-folder{padding-left:30px}
+.row-in{display:flex;gap:6px}
+.row-in input{flex:1}

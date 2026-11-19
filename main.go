@@ -87,6 +87,14 @@ func main() {
 	mux.HandleFunc("/api/docs/upload", handleDocsUpload)
 	mux.HandleFunc("/api/docs/list", handleDocsList)
 	mux.HandleFunc("/api/docs/open", handleDocsOpen)
+	mux.HandleFunc("/api/pick-folder", func(w http.ResponseWriter, r *http.Request) {
+		p, err := pickFolder(r.URL.Query().Get("start"))
+		if err != nil {
+			http.Error(w, "폴더 선택 창을 열지 못했습니다: "+err.Error(), 500)
+			return
+		}
+		writeJSON(w, map[string]any{"path": p})
+	})
 	mux.HandleFunc("/api/show", func(w http.ResponseWriter, r *http.Request) {
 		showMainWindow()
 		w.Write([]byte("ok"))
@@ -98,7 +106,7 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 	mux.HandleFunc("/api/info", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]any{"dataDir": dataDir, "dataFile": filepath.Join(dataDir, dataName), "version": "1.8.5"})
+		writeJSON(w, map[string]any{"dataDir": dataDir, "dataFile": filepath.Join(dataDir, dataName), "version": "1.8.6"})
 	})
 	go http.Serve(ln, mux)
 

@@ -1023,6 +1023,9 @@ async function openSettings(focus) {
           <button type="button" class="btn sm" data-m="bfolder">백업 폴더</button>
           <button type="button" class="btn sm" data-m="efolder">내보내기 폴더</button>
         </div>
+        <div class="fld">계약 문서 보관 위치 <span class="hint">계약명 폴더 아래에 '날짜 변경 - 바뀐 칸' 폴더로 정리 · 비우면 기본(${esc(st.docsRootDefault || '')}) · 바꾸면 기존 문서도 옮겨집니다</span>
+          <div class="row-in"><input id="sDocsRoot" value="${esc(st.docsRoot || '')}" aria-label="계약 문서 보관 위치"><button type="button" class="btn sm" data-m="pickDocs">폴더 선택</button><button type="button" class="btn sm" data-m="openDocs">열기</button></div>
+        </div>
         <div class="fld">백업에서 복원 <span class="hint">실행할 때·동기화 직전·저장 10분마다 자동 백업, 최근 40개 보관</span>
           <div class="bk-list">${backups.length ? backups.map((b, i) => `<label><input type="radio" name="bk" value="${esc(b)}"${i === 0 ? ' checked' : ''}>${esc(label(b))}</label>`).join('') : '<div class="empty" style="padding:16px">백업이 없습니다</div>'}</div>
           ${backups.length ? '<div><button type="button" class="btn sm" data-m="restore">선택한 백업으로 복원</button></div>' : ''}
@@ -1034,7 +1037,7 @@ async function openSettings(focus) {
       <button type="button" class="btn primary" data-m="ok">설정 저장</button>
     </div>`, {
     ok: async () => {
-      await saveSettingsForm();
+      try { await saveSettingsForm(); } catch (e) { toast('설정을 저장하지 못했습니다: ' + (e.message || e)); return; }
       const lines = (id) => $(id).value.split('\n').map((s) => s.trim()).filter(Boolean);
       const s = lines('#optSchools'), c = lines('#optCats');
       if (s.length) data.options.schools = s;
@@ -1084,6 +1087,15 @@ async function openSettings(focus) {
         box.innerHTML = cals.map((c) => `<label class="check"><input type="checkbox" data-gshow value="${esc(c.id)}"${chosen.includes(c.id) ? ' checked' : ''}><span class="dot" style="background:${esc(c.color)}"></span>${esc(c.name)}</label>`).join('') + '<span class="hint">고른 뒤 설정 저장</span>';
       } catch (e) { box.innerHTML = `<span class="gc-err">${esc(e.message || e)}</span>`; }
     },
+    pickDocs: async () => {
+      const i = $('#sDocsRoot');
+      try {
+        const r = await fetch('api/pick-folder?start=' + encodeURIComponent(i.value));
+        if (!r.ok) throw new Error(await r.text());
+        const p = (await r.json()).path; if (p) i.value = p;
+      } catch (e) { toast(e.message || String(e)); }
+    },
+    openDocs: () => fetch('api/docs/open?root=1'),
     folder: () => fetch('api/open-folder'), bfolder: () => fetch('api/open-folder?which=backup'), efolder: () => fetch('api/open-folder?which=export'),
     restore: async () => {
       const r = $('input[name=bk]:checked'); if (!r) return;
@@ -1100,13 +1112,14 @@ async function postSettings(obj) {
   await loadCfg();
 }
 async function saveSettingsForm() {
-  const o = { model: $('#sModel').value, notionDb: $('#sDb').value, notionRelay: $('#sRelay').value.trim(), autoSync: $('#sAuto').checked, syncMinutes: Number($('#sMin').value) || 10, proxy: $('#sProxy').value };
+  const o = { model: $('#sModel').value, notionDb: $('#sDb').value, notionRelay: $('#sRelay').value.trim(), docsRoot: $('#sDocsRoot').value.trim(), autoSync: $('#sAuto').checked, syncMinutes: Number($('#sMin').value) || 10, proxy: $('#sProxy').value };
   if ($('#sKey').value.trim()) o.anthropicKey = $('#sKey').value.trim();
   if ($('#sNotion').value.trim()) o.notionToken = $('#sNotion').value.trim();
   if ($('#sGSecret') && $('#sGSecret').value.trim()) o.googleSecret = $('#sGSecret').value.trim();
   o.gcalCalendar = $('#sGcalCal').value.trim();
   if ($$('[data-gshow]').length) o.gcalShow = $$('[data-gshow]').filter((c) => c.checked).map((c) => c.value);
   await postSettings(o);
+  docCache.clear(); // 보관 위치가 바뀌었을 수 있다
   gevReset(); // 같이 볼 캘린더가 바뀌었을 수 있으니 다시 받기
   gcalSchedule(800);
 }
@@ -1237,7 +1250,10 @@ function showDiff(cur, f, review, files) {
     addHistory(cur, '문서로 갱신', changes, keepDocs ? files.map((fl) => fl.name) : []);
     if (sel.length) touch(cur);
     reindex(); closeModal(); render(); scheduleSave();
-    if (keepDocs) uploadDocs(cur, files);
+    if (keepDocs) {
+      const labels = sel.map((k) => (FIELD_LABEL[k] || k).replace(/\(원\)$/, ''));
+      uploadDocs(cur, files, `${todayStr()} ${labels.length ? '변경 - ' + (labels.length > 4 ? labels.slice(0, 4).join('·') + ' 외 ' + (labels.length - 4) : labels.join('·')) : '자료 추가'}`);
+    }
     if (sel.length) toast(`${sel.length}개 칸을 반영했습니다`);
   } });
 }
@@ -1302,7 +1318,17 @@ function docListHtml(x) {
   const files = docCache.get(x.docDir);
   if (!files) return '<div class="doc-empty"><span class="spin"></span> 불러오는 중…</div>';
   if (!files.length) return '<div class="doc-empty">폴더가 비어 있습니다.</div>';
-  return files.map((f) => `<button type="button" class="doc" data-docopen="${esc(f.name)}" title="${esc(f.name)} 열기">${ICON.doc}<span class="dn">${esc(f.name)}</span><span class="muted">${f.size >= 1048576 ? (f.size / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(f.size / 1024)) + 'KB'} · ${new Date(f.modified).toLocaleDateString('ko-KR')}</span></button>`).join('');
+  const size = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB');
+  let html = '', folder = null;
+  for (const f of files) {
+    if ((f.folder || '') !== folder) {
+      folder = f.folder || '';
+      if (folder) html += `<button type="button" class="doc doc-folder" data-docopen="${esc(folder)}" title="'${esc(folder)}' 폴더 열기"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="dn">${esc(folder)}</span></button>`;
+    }
+    const base = f.name.slice(folder ? folder.length + 1 : 0);
+    html += `<button type="button" class="doc${folder ? ' in-folder' : ''}" data-docopen="${esc(f.name)}" title="${esc(base)} 열기">${ICON.doc}<span class="dn">${esc(base)}</span><span class="muted">${size(f.size)} · ${new Date(f.modified).toLocaleDateString('ko-KR')}</span></button>`;
+  }
+  return html;
 }
 async function loadDocs(x, force) {
   if (!x || !x.docDir || (docCache.has(x.docDir) && !force)) return;
@@ -1314,11 +1340,12 @@ async function loadDocs(x, force) {
   const el = ui.sel === x.id && $('#docList');
   if (el) el.innerHTML = docListHtml(x);
 }
-async function uploadDocs(x, files) {
+// sub: 계약명 폴더 안의 날짜·사유 폴더 이름 (예: '2026-11-20 변경 - 계약금액·완수일')
+async function uploadDocs(x, files, sub) {
   if (!files || !files.length) return [];
   const fd = new FormData();
   [...files].forEach((f) => fd.append('files', f, f.name));
-  fd.append('dir', x.docDir || ''); fd.append('school', x.school || ''); fd.append('title', x.title || x.name || '계약');
+  fd.append('dir', x.docDir || ''); fd.append('name', x.name || x.title || '계약'); fd.append('sub', sub || `${todayStr()} 자료 추가`);
   try {
     const r = await fetch('api/docs/upload', { method: 'POST', body: fd });
     if (!r.ok) throw new Error(await r.text());
@@ -1624,7 +1651,7 @@ function bind() {
         x.gcal = { on: c ? c.checked : true }; delete x._ai;
         addHistory(x, '문서로 추가', [], keep ? files.map((f) => f.name) : []);
         scheduleSave(); render();
-        if (keep && files.length) uploadDocs(x, files);
+        if (keep && files.length) uploadDocs(x, files, `${todayStr()} 최초 등록`);
       }
       if (act === 'docAdd') { const i = $('#docInput'); if (i) i.click(); }
       if (act === 'docFolder' && x && x.docDir) fetch('api/docs/open?dir=' + encodeURIComponent(x.docDir));

@@ -22,6 +22,7 @@ type Settings struct {
 	NotionToken   string   `json:"notionToken"`
 	NotionDB      string   `json:"notionDb"`
 	NotionRelay   string   `json:"notionRelay"` // 노션 경유 주소(비우면 직접)
+	DocsRoot      string   `json:"docsRoot"`    // 계약 문서 보관 위치(비우면 데이터 폴더\문서)
 	AutoSync      bool     `json:"autoSync"`
 	SyncMinutes   int      `json:"syncMinutes"`
 	Proxy         string   `json:"proxy"`
@@ -125,7 +126,7 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{
 			"anthropicKeyMasked": mask(s.AnthropicKey), "hasAnthropicKey": s.AnthropicKey != "",
 			"model": s.Model, "notionTokenMasked": mask(s.NotionToken), "hasNotionToken": s.NotionToken != "",
-			"notionDb": s.NotionDB, "notionRelay": s.NotionRelay, "autoSync": s.AutoSync, "syncMinutes": s.SyncMinutes, "proxy": s.Proxy, "lastSync": s.LastSync,
+			"notionDb": s.NotionDB, "notionRelay": s.NotionRelay, "docsRoot": docsRoot(), "docsRootDefault": defaultDocsRoot(), "autoSync": s.AutoSync, "syncMinutes": s.SyncMinutes, "proxy": s.Proxy, "lastSync": s.LastSync,
 			"hasGcal": s.GoogleRefresh != "", "googleEmail": s.GoogleEmail, "hasGoogleSecret": s.GoogleSecret != "" || buildClientSecret != "",
 			"gcalCalendar": s.GcalCalendar, "gcalShow": s.GcalShow,
 		})
@@ -146,6 +147,23 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if v, ok := str("model"); ok && v != "" {
 			s.Model = v
+		}
+		if v, ok := str("docsRoot"); ok {
+			if v == "" {
+				v = defaultDocsRoot()
+			}
+			if !filepath.IsAbs(v) {
+				http.Error(w, `문서 보관 위치는 D:\업무\계약문서 처럼 전체 경로로 넣어 주세요`, 400)
+				return
+			}
+			if err := moveDocs(docsRoot(), v); err != nil { // 기존 문서도 새 위치로
+				http.Error(w, "문서를 옮기지 못했습니다: "+err.Error(), 400)
+				return
+			}
+			s.DocsRoot = filepath.Clean(v)
+			if s.DocsRoot == defaultDocsRoot() {
+				s.DocsRoot = ""
+			}
 		}
 		if v, ok := str("notionRelay"); ok {
 			s.NotionRelay = strings.TrimRight(v, "/")

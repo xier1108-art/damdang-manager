@@ -15,12 +15,13 @@ func runWindow(url string) {
 	select {}
 }
 
-func openPath(p string)         { exec.Command("xdg-open", p).Start() }
-func selectInExplorer(p string) { fmt.Println("exported:", p) }
-func openInBrowser(u string)    { fmt.Println("open:", u) }
-func fatal(msg string)          { fmt.Fprintln(os.Stderr, msg); os.Exit(1) }
-func setWindowTheme(dark bool)  {}
-func showMainWindow()           {}
+func openPath(p string)                       { exec.Command("xdg-open", p).Start() }
+func pickFolder(start string) (string, error) { return "", errors.New("unsupported") }
+func selectInExplorer(p string)               { fmt.Println("exported:", p) }
+func openInBrowser(u string)                  { fmt.Println("open:", u) }
+func fatal(msg string)                        { fmt.Fprintln(os.Stderr, msg); os.Exit(1) }
+func setWindowTheme(dark bool)                {}
+func showMainWindow()                         {}
 
 func protect(b []byte) ([]byte, error)   { return nil, errors.New("unsupported") }
 func unprotect(b []byte) ([]byte, error) { return nil, errors.New("unsupported") }
